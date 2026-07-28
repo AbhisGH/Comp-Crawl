@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Relation Crawl [QA]",
+  "version": "1.0",
+  "description": "Created by Abhi",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "tabs",
+    "cookies"
+  ],
+  "host_permissions": [
+    "https://www.redbus.in/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  }
+}

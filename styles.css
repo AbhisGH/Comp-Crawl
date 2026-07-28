@@ -1,0 +1,414 @@
+/* ===== Global ===== */
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f5f5f5;
+  padding: 15px;
+  width: 450px;
+  color: #2c2c2c;
+}
+
+/* ===== Header with Refresh Button ===== */
+/* Flexbox container for main heading, bus count, and refresh button */
+.header-wrapper {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  gap: 10px;
+}
+
+/* Main heading - left aligned */
+.header-wrapper h2 {
+  margin: 0;
+  color: #2c2c2c;
+  text-align: left;
+  flex-shrink: 0;
+}
+
+/* Minimalistic refresh button styling */
+.refresh-btn {
+  padding: 6px 10px;
+  background-color: white;
+  color: #666;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 20px;
+  transition: all 0.2s;
+  white-space: nowrap;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.refresh-btn:hover {
+  background-color: #73d700;
+  color: white;
+  border-color: #73d700;
+}
+
+/* ===== RedBus Connection Status Indicator ===== */
+.redbus-status {
+  padding: 8px 12px;
+  margin: 0 0 15px 0;
+  border-radius: 6px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.redbus-status.disconnected {
+  background-color: white;
+  color: #666;
+  border: 1px solid #e0e0e0;
+}
+
+.redbus-status.connecting {
+  background-color: #fff9e6;
+  color: #856404;
+  border: 1px solid #ffd966;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.redbus-status.connected {
+  background-color: #f0ffe6;
+  color: #2d5016;
+  border: 1px solid #73d700;
+}
+
+.redbus-status.error {
+  background-color: #fff0f0;
+  color: #721c24;
+  border: 1px solid #ff4444;
+}
+
+/* Loading state: fetching route data from RedBus API */
+.redbus-status.loading {
+  background-color: #f0f5ff;
+  color: #1a4fa8;
+  border: 1px solid #4d82e0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.redbus-status.loading::before {
+  content: "";
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 2px solid #4d82e0;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* ===== Inputs ===== */
+.inputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 15px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.inputs label {
+  font-weight: bold;
+  margin-right: 5px;
+}
+
+.inputs select,
+.inputs input[type="date"] {
+  padding: 6px 8px;
+  border-radius: 5px;
+  border: 1px solid #e0e0e0;
+  background-color: white;
+  flex: 1;
+  min-width: 120px;
+}
+
+/* ===== Header Action Buttons (Download) ===== */
+.header-download-btn {
+  padding: 6px 10px;
+  background-color: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s;
+  white-space: nowrap;
+  line-height: 1;
+  flex-shrink: 0;
+  color: #666;
+}
+
+.header-download-btn:hover {
+background-color: #73d700;
+  color: white;
+  border-color: #73d700;
+}
+
+/* ===== Button Group ===== */
+.button-group {
+  flex: 1 1 100%;
+  display: flex;
+  gap: 10px;
+}
+
+.go-redbus-btn,
+.compare-btn {
+  flex: 1;
+  padding: 10px;
+  font-weight: bold;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-size: 14px;
+}
+
+.compare-btn {
+  background-color: #73d700;
+  color: white;
+  border: 2px solid #73d700;
+}
+
+.compare-btn:hover {
+  background-color: #85e600;
+  border-color: #85e600;
+}
+
+.go-redbus-btn {
+  background-color: white;
+  color: #73d700;
+  border: 2px solid #73d700;
+}
+
+.go-redbus-btn:hover {
+  background-color: #f0ffe6;
+  border-color: #85e600;
+  color: #85e600;
+}
+
+/* ===== Last Search Info Display ===== */
+.last-search {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 6px;
+  text-align: center;
+}
+
+/* ===== Section Header with Bus Count ===== */
+/* Flexbox container for heading and bus count on same line */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 15px 0 10px 0;
+}
+
+/* Remove default margin from h3 inside section-header */
+.section-header h3 {
+  margin: 0;
+  display: inline-block;
+  font-weight: 600;
+  color: #2c2c2c;
+}
+
+/* Inline bus count display - in header, no wrapping */
+.bus-count {
+  font-size: 14px;
+  font-weight: 600;
+  color: #666;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
+  margin-right: 10px;
+}
+
+/* ===== Section Header Controls (filter + focus button group) ===== */
+.section-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ===== Focus Filter Button (Flix + IntrCity toggle) ===== */
+.focus-filter-btn {
+  padding: 6px 10px;
+  background-color: white;
+  color: #666;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.focus-filter-btn:hover {
+  border-color: #73d700;
+  color: #73d700;
+}
+
+.focus-filter-btn.active {
+  background-color: #73d700;
+  color: white;
+  border-color: #73d700;
+}
+
+.focus-filter-btn.active:hover {
+  background-color: #85e600;
+  border-color: #85e600;
+}
+
+
+.filter-dropdown {
+  padding: 6px 10px;
+  border-radius: 5px;
+  border: 1px solid #e0e0e0;
+  background-color: white;
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.filter-dropdown:hover {
+  border-color: #73d700;
+}
+
+.filter-dropdown:focus {
+  outline: none;
+  border-color: #73d700;
+  box-shadow: 0 0 0 2px rgba(115, 215, 0, 0.1);
+}
+
+/* ===== Section Title ===== */
+.section-title {
+  margin: 16px 0 6px;
+  font-weight: 600;
+  color: #2c2c2c;
+}
+
+/* ===== Table Wrapper ===== */
+.table-wrapper {
+  max-height: 300px;
+  overflow-x: auto;
+  overflow-y: auto;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background-color: white;
+  margin-bottom: 12px;
+}
+
+/* ===== Shared Table Styles ===== */
+#comparisonTable,
+#operatorTable {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 700px;
+  background-color: white;
+}
+
+#comparisonTable th,
+#comparisonTable td,
+#operatorTable th,
+#operatorTable td {
+  padding: 8px 10px;
+  text-align: center;
+  border-bottom: 1px solid #f0f0f0;
+  white-space: nowrap;
+}
+
+/* ===== Tight SRP Rank Column ===== */
+/* Header cell for SRP Rank - constrained width */
+.srp-rank-col {
+  width: 60px;
+  max-width: 60px;
+  min-width: 60px;
+  padding: 8px 4px !important;
+  text-align: center;
+}
+
+/* Body cells for SRP Rank (last column) - constrained width */
+#comparisonTable tbody td:last-child {
+  width: 60px;
+  max-width: 60px;
+  min-width: 60px;
+  padding: 8px 4px !important;
+  text-align: center;
+}
+
+/* ===== Sticky Headers ===== */
+#comparisonTable th,
+#operatorTable th {
+  background-color: #73d700;
+  color: white;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  font-weight: 600;
+}
+
+/* ===== Zebra Rows ===== */
+#comparisonTable tbody tr:nth-child(even),
+#operatorTable tbody tr:nth-child(even) {
+  background-color: #fafafa;
+}
+
+/* ===== Hover (operator table only) ===== */
+#operatorTable tbody tr:hover {
+  background-color: #f0ffe6;
+}
+
+/* ===== FlixBus Highlight ===== */
+#comparisonTable tbody tr.flixbus,
+#operatorTable tbody tr.flixbus {
+  background-color: #f0ffe6;        /* light green tint */
+  border-left: 4px solid #73d700;   /* bright green accent */
+  font-weight: 600;
+}
+
+#operatorTable tbody tr.flixbus:hover {
+  background-color: #e6ffcc;
+}
+
+/* ===== Legend (dot key below heading) ===== */
+.legend {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin: 10px 0 4px 0;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #555;
+}
+
+.legend-dot {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.legend-dot--red  { color: red; }
+.legend-dot--blue { color: #1a6ecf; }

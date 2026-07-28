@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>RedBus Flix vs Competitors</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <div class="container">
+    <!-- Main heading with bus count and refresh button -->
+    <div class="header-wrapper">
+      <h2>Relation Crawl</h2>
+      <span id="busCount" class="bus-count"></span>
+      <button id="downloadBtn" class="header-download-btn" title="Compare and Download">⬇</button>
+      <button id="refreshBtn" class="refresh-btn" title="Reset everything">↻</button>
+    </div>
+
+    <!-- RedBus Connection Status Indicator -->
+    <div id="redbusStatus" class="redbus-status disconnected">RedBus Not Connected</div>
+
+    <!-- Input form for city selection and date -->
+    <div class="inputs">
+      <label for="fromCity">From City:</label>
+      <select id="fromCity"></select>
+
+      <label for="toCity">To City:</label>
+      <select id="toCity"></select>
+
+      <input id="doj" type="date" />
+      
+      <div class="button-group">
+        <button id="compareBtn" class="compare-btn">Compare</button>
+        <button id="goToRedbusBtn" class="go-redbus-btn">Go to RedBus ↗</button>
+      </div>
+    </div>
+
+    <!-- Display last search metadata -->
+    <div id="lastSearchInfo" class="last-search"></div>
+
+    <!-- Operator summary section - NOW FIRST -->
+    <!-- productTypeFilter here drives BOTH the aggregated and all-buses tables -->
+    <div class="section-header" id="operatorSection" style="display: none;">
+      <h3>Aggregated Comparsion</h3>
+      <select id="productTypeFilter" class="filter-dropdown">
+        <option value="all" selected>All</option>
+        <option value="hybrid">Hybrid</option>
+        <option value="sleeper">Sleeper</option>
+        <option value="seater">Seater</option>
+      </select>
+    </div>
+
+    <!-- Operator aggregated data table -->
+    <div class="table-wrapper" id="operatorTableWrapper" style="display: none;">
+      <table id="operatorTable">
+        <thead>
+          <tr>
+            <th>Operator</th>
+            <th># Buses</th>
+            <th>Avg Load %</th>
+            <th>Avg Avg ₹</th>
+            <th>Avg Low ₹</th>
+            <th>Avg High ₹</th>
+            <th>First Dep</th>
+            <th>Last Dep</th>
+            <th>Min Low ₹</th>
+            <th>Max High ₹</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <!-- Individual bus comparison section - NOW SECOND -->
+    <!-- productTypeFilter (above) controls this table too; only the Flix+IntrCity focus toggle is local -->
+    <div class="section-header" id="comparisonSection" style="display: none;">
+      <h3>All buses Comparison</h3>
+      <div class="section-header-controls">
+        <button id="focusFlixIntrBtn" class="focus-filter-btn" title="Show only Flix & IntrCity">Flix + IntrCity</button>
+      </div>
+    </div>
+
+    <!-- Comparison table showing individual buses -->
+    <div class="table-wrapper" id="comparisonTableWrapper" style="display: none;">
+      <table id="comparisonTable">
+        <thead>
+          <tr>
+            <th>Line Code</th>
+            <th>Bus Name</th>
+            <th>1st BP Dep</th>
+            <th>Load %</th>
+            <th>Lowest</th>
+            <th>Average</th>
+            <th>Highest</th>
+            <th>Departure</th>
+            <th>PBH</th>
+            <th>Seater</th>
+            <th>Sleeper</th>
+            <th class="srp-rank-col">Rank on RB</th>
+            <th>Price Points</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <!-- Legend: dot indicators (bottom of popup) -->
+    <div class="legend">
+      <span class="legend-item">
+        <span class="legend-dot legend-dot--red">●</span> Data missing
+      </span>
+      <span class="legend-item">
+        <span class="legend-dot legend-dot--blue">●</span> Volvo
+      </span>
+    </div>
+
+  </div>
+
+  <!-- Main script file -->
+  <script src="popup.js"></script>
+</body>
+
+</html>
