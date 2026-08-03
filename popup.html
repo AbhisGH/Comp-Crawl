@@ -43,12 +43,16 @@
     <!-- productTypeFilter here drives BOTH the aggregated and all-buses tables -->
     <div class="section-header" id="operatorSection" style="display: none;">
       <h3>Aggregated Comparsion</h3>
-      <select id="productTypeFilter" class="filter-dropdown">
-        <option value="all" selected>All</option>
-        <option value="hybrid">Hybrid</option>
-        <option value="sleeper">Sleeper</option>
-        <option value="seater">Seater</option>
-      </select>
+      <div class="filter-nav">
+        <button id="filterPrevBtn" class="filter-nav-btn" title="Previous filter">&#8249;</button>
+        <button id="filterNextBtn" class="filter-nav-btn" title="Next filter">&#8250;</button>
+        <select id="productTypeFilter" class="filter-dropdown">
+          <option value="all" selected>All</option>
+          <option value="hybrid">Hybrid</option>
+          <option value="sleeper">Sleeper</option>
+          <option value="seater">Seater</option>
+        </select>
+      </div>
     </div>
 
     <!-- Operator aggregated data table -->

@@ -332,6 +332,17 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  // Arrow buttons cycle through productTypeFilter options
+  const filterSelect = document.getElementById("productTypeFilter");
+  function stepFilter(direction) {
+    const options = filterSelect.options;
+    const next = (filterSelect.selectedIndex + direction + options.length) % options.length;
+    filterSelect.selectedIndex = next;
+    filterSelect.dispatchEvent(new Event("change"));
+  }
+  document.getElementById("filterPrevBtn").addEventListener("click", () => stepFilter(-1));
+  document.getElementById("filterNextBtn").addEventListener("click", () => stepFilter(1));
+
   // Focus filter button: toggle between Flix+IntrCity only and all buses
   document.getElementById("focusFlixIntrBtn").addEventListener("click", () => {
     focusFilterActive = !focusFilterActive;

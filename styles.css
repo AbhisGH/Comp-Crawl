@@ -279,6 +279,30 @@ background-color: #73d700;
 }
 
 
+.filter-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.filter-nav-btn {
+  padding: 4px 8px;
+  background-color: white;
+  color: #666;
+  border: 1px solid #e0e0e0;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.filter-nav-btn:hover {
+  border-color: #73d700;
+  color: #73d700;
+}
+
 .filter-dropdown {
   padding: 6px 10px;
   border-radius: 5px;
