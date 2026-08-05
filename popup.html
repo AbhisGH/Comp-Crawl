@@ -25,10 +25,15 @@
       <label for="fromCity">From City:</label>
       <select id="fromCity"></select>
 
+      <button id="swapCitiesBtn" class="swap-btn" title="Swap cities and fetch">⇄</button>
+
       <label for="toCity">To City:</label>
       <select id="toCity"></select>
 
-      <input id="doj" type="date" />
+      <div class="doj-wrapper">
+        <input id="doj" type="date" />
+        <button id="nextDayBtn" class="next-day-btn" title="Next day">›</button>
+      </div>
       
       <div class="button-group">
         <button id="compareBtn" class="compare-btn">Compare</button>
@@ -103,6 +108,8 @@
             <th>Sleeper</th>
             <th class="srp-rank-col">Rank on RB</th>
             <th>Price Points</th>
+            <th>Ratings</th>
+            <th>ND/D</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -117,6 +124,7 @@
       <span class="legend-item">
         <span class="legend-dot legend-dot--blue">●</span> Volvo
       </span>
+      <button id="exportNdBtn" class="export-nd-btn" title="Export ND/D mapping as CSV">Export ND/D ↓</button>
     </div>
 
   </div>

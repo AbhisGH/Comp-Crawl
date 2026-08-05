@@ -13,6 +13,32 @@ let redbusConnectionStatus = false;
 // Focus filter state for Flix + IntrCity toggle
 let focusFilterActive = false;
 
+// Persistent ND/D status map: key = "lineCode|fromCityCode|toCityCode|busProduct" -> "ND" | "D"
+let ndStatusMap = {};
+
+function busProduct(isSeater, isSleeper) {
+  if (isSeater && isSleeper) return "Hybrid";
+  if (isSleeper) return "Sleeper";
+  if (isSeater) return "Seater";
+  return "Unknown";
+}
+
+function ndKey(lineCode, fromCity, toCity, product) {
+  return `${lineCode}|${fromCity}|${toCity}|${product}`;
+}
+
+function loadNdStatusMap(cb) {
+  chrome.storage.local.get("ndStatusMap", data => {
+    ndStatusMap = data.ndStatusMap || {};
+    if (cb) cb();
+  });
+}
+
+function saveNdStatus(key, value) {
+  ndStatusMap[key] = value;
+  chrome.storage.local.set({ ndStatusMap });
+}
+
 // City mapping: name -> Redbus city code
 const cities = {
   "Agra": 1290,
@@ -212,6 +238,9 @@ function renderComparisonTable() {
   const tbody = document.querySelector("#comparisonTable tbody");
   tbody.innerHTML = "";
 
+  const fromCity = document.getElementById("fromCity").value;
+  const toCity   = document.getElementById("toCity").value;
+
   filteredData.forEach(bus => {
     const tr = document.createElement("tr");
     const isFlix = bus.travelsName.toLowerCase().includes("flix");
@@ -238,7 +267,7 @@ function renderComparisonTable() {
     const lineCode = isFlix
       ? lookupLineCode(bus.serviceId)
       : "-";
-    
+
     // For Flix buses with a single fareList entry, avg and highest are shown as red NA
     const redNA = `<span style="color:red;font-weight:600;">NA</span>`;
     const avgDisplay    = bus.singleFareList ? redNA : bus.AveragePrice;
@@ -250,8 +279,31 @@ function renderComparisonTable() {
       ? `<span style="color:#1a6ecf;font-size:10px;margin-right:4px;" title="Volvo">●</span>${bus.travelsName}`
       : bus.travelsName;
 
+    // ND/D column: dropdown for Flix buses keyed by lineCode|fromCity|toCity|product; dash for others
+    let ndCell = `<td>-</td>`;
+    if (isFlix && lineCode !== "NA" && lineCode !== "-") {
+      const product = busProduct(bus.isSeater, bus.isSleeper);
+      const key = ndKey(lineCode, fromCity, toCity, product);
+      const current = ndStatusMap[key] || "";
+      ndCell = `<td><select class="nd-select" data-nd-key="${key}">
+        <option value="" ${current === "" ? "selected" : ""}></option>
+        <option value="ND" ${current === "ND" ? "selected" : ""}>ND</option>
+        <option value="D" ${current === "D" ? "selected" : ""}>D</option>
+      </select></td>`;
+    }
+
+    // Yellow dot before line code if ND/D not yet set for this Flix bus
+    let lineCodeDisplay = lineCode;
+    if (isFlix && lineCode !== "NA" && lineCode !== "-") {
+      const product = busProduct(bus.isSeater, bus.isSleeper);
+      const key = ndKey(lineCode, fromCity, toCity, product);
+      if (!ndStatusMap[key]) {
+        lineCodeDisplay = `<span style="color:#f0ad4e;font-size:10px;margin-right:3px;" title="ND/D not set">●</span>${lineCode}`;
+      }
+    }
+
     tr.innerHTML = `
-      <td>${lineCode}</td>
+      <td>${lineCodeDisplay}</td>
       <td>${busNameDisplay}</td>
       <td>${bus.firstBpTime || "NA"}</td>
       <td>${bus.LoadPct}%</td>
@@ -264,8 +316,10 @@ function renderComparisonTable() {
       <td>${boolToEmoji(bus.isSleeper)}</td>
       <td>${bus.SRPRank}</td>
       <td>${bus.pricePoints ?? "NA"}</td>
+      <td>${(() => { const r = parseFloat(bus.totalRatings); if (isNaN(r)) return "NA"; if (!isFlix) return `<span style="color:#000;font-weight:600;">${bus.totalRatings}</span>`; const c = r >= 4 ? "#73d700" : r < 3.5 ? "#d9534f" : "#f0ad4e"; return `<span style="color:${c};font-weight:600;">${bus.totalRatings}</span>`; })()}</td>
+      ${ndCell}
     `;
-    
+
     tbody.appendChild(tr);
   });
 }
@@ -319,6 +373,42 @@ function renderOperatorTable() {
     opTbody.appendChild(tr);
   });
 }
+
+// Persist ND/D selection and handle dblclick-to-focus via event delegation on comparison tbody
+document.addEventListener("DOMContentLoaded", () => {
+  const compTbody = document.querySelector("#comparisonTable tbody");
+
+  compTbody.addEventListener("change", e => {
+    if (!e.target.classList.contains("nd-select")) return;
+    const key = e.target.dataset.ndKey;
+    const value = e.target.value;
+    if (value) {
+      saveNdStatus(key, value);
+    } else {
+      delete ndStatusMap[key];
+      chrome.storage.local.set({ ndStatusMap });
+    }
+    // Re-render so the yellow dot appears/disappears immediately
+    renderComparisonTable();
+  });
+
+  // Dblclick anywhere on a Flix row opens/focuses the ND/D dropdown in that row
+  compTbody.addEventListener("dblclick", e => {
+    const tr = e.target.closest("tr");
+    if (!tr) return;
+    const select = tr.querySelector(".nd-select");
+    if (!select) return;
+    select.focus();
+    select.size = select.options.length; // expand as a listbox
+    select.addEventListener("change", () => { select.size = 1; select.blur(); }, { once: true });
+    select.addEventListener("blur",   () => { select.size = 1; },               { once: true });
+  });
+});
+
+// Load persisted ND/D map before restoring session so dropdowns render correctly
+document.addEventListener("DOMContentLoaded", () => {
+  loadNdStatusMap();
+});
 
 // Add event listeners for filter dropdowns
 document.addEventListener("DOMContentLoaded", () => {
@@ -406,8 +496,11 @@ function boolToEmoji(value) {
 
 // Reset/Refresh functionality - clear all data and UI
 document.getElementById("refreshBtn").addEventListener("click", () => {
-  // Clear session storage
-  chrome.storage.local.clear();
+  // Clear session data but preserve the persistent ND/D map
+  chrome.storage.local.remove([
+    "lastComparison", "lastOperatorSummary", "lastSearchMeta",
+    "fromCity", "toCity", "doj", "allRows", "totalBusCount", "productTypeFilterValue"
+  ]);
   
   // Clear global data
   allComparisonData = [];
@@ -909,6 +1002,16 @@ document.getElementById("compareBtn").addEventListener("click", async () => {
   await fetchAndProcessData(false);
 });
 
+// Swap cities button - interchange from/to and immediately fetch
+document.getElementById("swapCitiesBtn").addEventListener("click", async () => {
+  const fromSelect = document.getElementById("fromCity");
+  const toSelect = document.getElementById("toCity");
+  const tmp = fromSelect.value;
+  fromSelect.value = toSelect.value;
+  toSelect.value = tmp;
+  await fetchAndProcessData(false);
+});
+
 // Download button - fetch, display tables, and download CSV
 document.getElementById("downloadBtn").addEventListener("click", async () => {
   await fetchAndProcessData(true);
@@ -942,4 +1045,40 @@ document.getElementById("goToRedbusBtn").addEventListener("click", () => {
   const url = `https://www.redbus.in/bus-tickets/${slug}?fromCityName=${encodeURIComponent(fromCityName)}&fromCityId=${fromCityId}&srcCountry=undefined&fromCityType=CITY&toCityName=${encodeURIComponent(toCityName)}&toCityId=${toCityId}&destCountry=undefined&toCityType=CITY&onward=${formattedDate}&doj=${formattedDate}&ref=home`;
 
   chrome.tabs.create({ url });
+});
+
+// Export ND/D mapping as CSV
+document.getElementById("exportNdBtn").addEventListener("click", () => {
+  chrome.storage.local.get("ndStatusMap", data => {
+    const map = data.ndStatusMap || {};
+    const entries = Object.entries(map);
+    if (!entries.length) {
+      alert("No ND/D mappings saved yet.");
+      return;
+    }
+    const rows = [["Line Code", "From City Code", "To City Code", "Bus Product", "ND/D"]];
+    entries.forEach(([key, value]) => {
+      const [lineCode, fromCity, toCity, product] = key.split("|");
+      rows.push([lineCode, fromCity, toCity, product, value]);
+    });
+    const csv = rows.map(r => r.map(v => `"${v}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "nd_d_mapping.csv";
+    a.click();
+  });
+});
+
+// Next-day button - advance date by 1 day and re-fetch
+document.getElementById("nextDayBtn").addEventListener("click", async () => {
+  const dojEl = document.getElementById("doj");
+  if (!dojEl.value) return;
+  const d = new Date(dojEl.value);
+  d.setDate(d.getDate() + 1);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  dojEl.value = `${yyyy}-${mm}-${dd}`;
+  await fetchAndProcessData(false);
 });

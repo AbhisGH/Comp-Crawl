@@ -143,6 +143,40 @@ body {
   min-width: 120px;
 }
 
+.doj-wrapper {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 140px;
+}
+
+.doj-wrapper input[type="date"] {
+  flex: 1;
+  min-width: 0;
+  border-radius: 5px 0 0 5px;
+  border-right: none;
+}
+
+.next-day-btn {
+  padding: 6px 9px;
+  border: 1px solid #e0e0e0;
+  border-left: none;
+  border-radius: 0 5px 5px 0;
+  background-color: white;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  color: #555;
+  transition: background-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.next-day-btn:hover {
+  background-color: #73d700;
+  color: white;
+  border-color: #73d700;
+}
+
 /* ===== Header Action Buttons (Download) ===== */
 .header-download-btn {
   padding: 6px 10px;
@@ -162,6 +196,25 @@ body {
 background-color: #73d700;
   color: white;
   border-color: #73d700;
+}
+
+/* ===== Swap Cities Button ===== */
+.swap-btn {
+  padding: 5px 8px;
+  background-color: white;
+  color: #73d700;
+  border: 1px solid #73d700;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.swap-btn:hover {
+  background-color: #73d700;
+  color: white;
 }
 
 /* ===== Button Group ===== */
@@ -370,13 +423,24 @@ background-color: #73d700;
   text-align: center;
 }
 
-/* Body cells for SRP Rank (last column) - constrained width */
-#comparisonTable tbody td:last-child {
+/* Body cells for SRP Rank column (12th column) - constrained width */
+#comparisonTable tbody td:nth-child(12) {
   width: 60px;
   max-width: 60px;
   min-width: 60px;
   padding: 8px 4px !important;
   text-align: center;
+}
+
+/* ND/D dropdown in comparison table */
+.nd-select {
+  font-size: 11px;
+  padding: 2px 2px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  background: white;
+  cursor: pointer;
+  width: 44px;
 }
 
 /* ===== Sticky Headers ===== */
@@ -436,3 +500,20 @@ background-color: #73d700;
 
 .legend-dot--red  { color: red; }
 .legend-dot--blue { color: #1a6ecf; }
+
+.export-nd-btn {
+  font-size: 11px;
+  padding: 2px 7px;
+  background: white;
+  color: #555;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.export-nd-btn:hover {
+  background: #f0ad4e;
+  color: white;
+  border-color: #f0ad4e;
+}
