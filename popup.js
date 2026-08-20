@@ -13,7 +13,7 @@ let redbusConnectionStatus = false;
 // Focus filter state for Flix + IntrCity toggle
 let focusFilterActive = false;
 
-// Persistent ND/D status map: key = "lineCode|fromCityCode|toCityCode|busProduct" -> "ND" | "D"
+// Persistent ND/D status map: key = "lineCode|busProduct" -> "ND" | "D"
 let ndStatusMap = {};
 
 function busProduct(isSeater, isSleeper) {
@@ -23,13 +23,29 @@ function busProduct(isSeater, isSleeper) {
   return "Unknown";
 }
 
-function ndKey(lineCode, fromCity, toCity, product) {
-  return `${lineCode}|${fromCity}|${toCity}|${product}`;
+function ndKey(lineCode, product) {
+  return `${lineCode}|${product}`;
 }
 
 function loadNdStatusMap(cb) {
   chrome.storage.local.get("ndStatusMap", data => {
-    ndStatusMap = data.ndStatusMap || {};
+    const raw = data.ndStatusMap || {};
+    const migrated = {};
+    let changed = false;
+    Object.entries(raw).forEach(([key, value]) => {
+      const parts = key.split("|");
+      if (parts.length === 4) {
+        // Old format: lineCode|fromCity|toCity|product → new: lineCode|product
+        const newKey = `${parts[0]}|${parts[3]}`;
+        // Prefer "D" if multiple old keys collapse to the same new key
+        if (!migrated[newKey] || value === "D") migrated[newKey] = value;
+        changed = true;
+      } else {
+        migrated[key] = value;
+      }
+    });
+    ndStatusMap = migrated;
+    if (changed) chrome.storage.local.set({ ndStatusMap });
     if (cb) cb();
   });
 }
@@ -108,6 +124,7 @@ const cities = {
   "Bareilly": 1437,
   "Aurangabad": 309,
   "Ongole": 135,
+  "Ooty": 254,
   "Vizianagaram": 69217,
   "Kakinada": 316,
   "Rameswaram  ": 496,
@@ -153,6 +170,15 @@ async function initializeRedbusConnection() {
 
 // Check RedBus status on popup load
 document.addEventListener("DOMContentLoaded", async () => {
+  const now = new Date();
+  const day = String(now.getDate()).padStart(2, "0");
+  const month = now.toLocaleString("en-GB", { month: "short" });
+  const weekday = now.toLocaleString("en-GB", { weekday: "short" });
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  const weekNo = Math.ceil(((now - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+  document.getElementById("currentDateLabel").textContent =
+    `${day} ${month} (${weekday}, Wk ${weekNo})`;
+
   // Check if RedBus is already initialized
   try {
     const status = await chrome.runtime.sendMessage({ type: "CHECK_REDBUS_STATUS" });
@@ -206,6 +232,75 @@ const LINE_UUID_MAP = {"1f91dcfe-6c36-441b-8ac8-c21cb972be43":"DELIGI01","b496b7
 // Maps FlixBus Line UUID -> hardcoded total seat count (from master_india_lines.csv)
 const LINE_SEAT_MAP = {"b496b789-c346-4334-b548-395646d9d6ee":45,"95572923-ef71-4cf3-8ac7-77104851b017":36,"592aa978-56af-4a3c-98bd-3451653d91b0":36,"db480497-d8fd-4f0f-835a-163875d40459":48,"69096e6f-56c7-4b5a-857c-d9670f8d852f":48,"ec18d028-29b3-413a-a15a-7efa504ad5f3":48,"757bf869-56c7-46b2-939b-71ba3759a7e7":48,"317a9a51-0de6-4b73-921e-dae6334f916b":45,"84dfe4fa-9623-4cf7-a21c-268b8eeaf71a":45,"75d99d81-e5d9-4428-b4c2-823720dc2095":45,"23750bb4-cc6b-461e-ab14-21c636f7b70d":45,"89567f53-2da1-4b1b-baaf-aefbdcda5ee1":45,"b0331778-942d-478c-b751-cac180ce1d7a":45,"aded58fd-bb0c-45e3-b6cd-51638968ff3d":49,"130d0b12-f2b0-4783-8005-8573ca680346":49,"22a4a751-d72a-416f-a480-2c803b0f8401":45,"3c7c4278-dcef-43db-92c1-3a55b0f87eed":45,"0cb111c4-0e4f-4fc9-9918-32caa6576a6d":45,"72c51962-5e58-492a-921e-7cdd68f161d5":49,"218453a2-cc03-44d1-8840-cbdb60c8e079":45,"2a69f65d-f9b2-4ad4-b657-948d554c37de":36,"bfe5b1e4-bff3-4715-8b73-5de6ff98cf77":48,"92e62b01-1052-44a2-9810-9f93add164e3":49,"77223855-3b4e-4242-9ffe-1a0d1d9f566f":36,"fe17591f-fbfc-4479-9897-203d362471ef":48,"24c49b22-fcc9-4e97-909e-37308c3c0530":48,"7f953dcc-3610-4d4b-b993-3c046f643c8b":48,"4b619c49-8ed6-4fbd-981d-3486091b5110":48,"ae2c281e-85ac-4c0e-8649-41ee6b48a3ef":49,"268abe54-c1f5-41cb-885a-ce999a05a1cc":36,"0c672a51-e005-427b-947b-a39f738a747c":45,"e24197e0-2dbf-43e2-9c61-76c819360b8a":36,"288732f9-52e4-445e-9112-3629ecb95fbf":48,"e1fa0e0a-a170-4ed5-b95f-b7f88f252f46":45,"462461db-7aa9-4130-b372-af49e7e8d823":45,"36e3fc1c-60da-496a-a8fc-b0bf8defb983":36,"4568ed20-be7c-4375-ac36-d901b4315de3":48,"fefdb46f-92d0-4c89-bde6-98ea092e3af5":48,"0392d8fe-1749-48c7-88d0-c2212c937cdf":36,"7d4b75c9-a36d-4962-b8c3-a6908c38e6f1":36,"d05ef689-3f28-48a7-804f-f3e464e22d4b":48,"63f58157-1a22-4c5b-abdf-1da503de7a97":36,"cff5094d-9672-4705-8b45-775f29c0b22b":36,"7e5794e8-2c6c-418c-97b5-35a6654e54f7":36,"efbe9628-2fe0-4a4c-9b79-d978153620d4":45,"a2e1e9bc-c373-4b5a-937c-ce069a1c03be":22,"29ab8429-4444-454f-bd00-d9e4cd94679c":36,"556f243e-bdde-4a9a-83b0-83f96fafd1d0":36,"04970adb-b0e6-4357-8618-50767d2a42e3":45,"efba0533-009b-4f9a-b150-33955802adf0":48,"ebd82b99-ae5d-4b2b-8008-df65c71bedca":36,"9958d1ef-7216-43f2-b19c-4a0dfb81fd08":36,"3c8926ab-e467-47bc-8125-392d6a1e5285":36,"472eb112-4d5b-44c8-8751-4cae526a5454":36,"2cd8377c-d26a-4882-a330-433360361769":48,"bd936576-d3ce-4da1-940b-88ece36fd6f0":36,"cd140128-87c6-4aad-be17-7514f14f6597":48,"5303a3ca-f253-41a6-8f04-bab88e3774c8":36,"36c17060-0ad8-4fa1-921e-fe32c34fed98":36,"598d6222-0f02-4c8d-9e25-d497ce6cebba":36,"d6a697a4-55a6-46ca-a764-7481f2eb93ec":36,"5da8bbdb-9b0c-4e53-8bc9-32b0173d4dff":36,"043acdd1-3fae-4c70-939c-fe7ca570cb87":48,"682633a1-33d2-4342-a965-8cd80f07b515":36,"85d0ee98-c9af-42c9-8959-c81a9a3e5080":36,"53b6f8d4-5bc2-4ca4-90b2-a455449e0826":48,"fdd58745-c866-437c-9263-451b35294d19":36,"a6bbc851-7eb1-45d6-825d-1d5b6250f92f":36,"dc44da0f-097a-4ab6-9d1f-2c14efb410b3":48,"9cc512a7-3ecb-11ea-8017-02437075395e":36,"f13bbb5e-185e-4ca0-96ce-7c74f09854d9":36,"2eb1b3c6-3601-44c9-aad0-40c59f5a1747":48,"0b440cee-c22f-43a8-be27-8cda7b05a990":48,"577ca07c-193f-40b6-9215-ea7a782e9212":36,"b7821838-cf83-4d9f-bc5c-9482ea0c053c":36,"ca273143-8395-43db-81ce-76f0697b756e":48,"cc4a2370-69b9-4037-836b-170c3150fbf7":36,"e6dd70a2-1c61-4201-a3e3-2b2251f8e076":36,"64fda8cc-cacf-4ab1-b033-b89ca09338df":36,"dd48d18c-3df1-433a-956b-9ca9145915a2":36,"1a1860bf-864e-4e08-83c2-8c6da5298fa6":36,"3c1ca721-7e6b-42a2-a991-79d888f46d3e":48,"ec6b7803-498a-411c-afb1-a32e323192e5":36,"676e56eb-d7f1-4c8b-81dd-303e72a781c6":36,"703ff0d0-67ac-4d47-9a4c-314f6a2eda2c":36,"a9f510e4-3a66-4279-be36-48a4f63183f3":48,"c7f82323-aee5-48e4-ac53-639241594abd":48,"48e985f6-3f4f-4a92-b229-cac0c6e8b86e":36,"d392a36e-b893-476d-a090-11a180a6be07":36,"79e73708-7baa-4a97-9096-bb17c4345dc6":36,"c5dfc0b8-fbe4-4cb0-a00a-c0170c3fba50":36,"00c7282e-d2fc-4e7f-8f16-7ea32d582975":36,"712529d8-9527-4ba6-8461-cd6adad8890b":48,"b859338e-b7b4-4613-9463-4fe8fcdd9bcf":36,"223d6130-0393-431e-bb5f-6d55e2372804":36,"54dc5ef8-274c-4b2f-b3f1-41ec174cdae5":36,"6f5ad709-cde0-4ca3-b7df-7fc3c0b1a099":36,"32237ee2-288e-4577-b38a-2b9868534c99":48,"9cc51dd4-3ecb-11ea-8017-02437075395e":36,"852c456e-c71e-48e5-9b8b-31d761afc11c":36,"65949ade-ace5-44f8-9d84-a0519fa63309":36,"2ce33977-fc19-4fab-b580-f92200d12e0e":36,"9cc51727-3ecb-11ea-8017-02437075395e":36,"731c7322-876d-48cb-aded-369dee74996f":36,"5935fa29-8a40-402c-88d8-c88f275b14d7":36,"7651465b-c42f-4bca-82a3-c78e08e1a5f0":36,"093da6cb-7d78-4d4d-931e-119cac4c2c9e":36,"907a0df7-1080-4747-b35a-bf2b72887c9b":36,"5c133168-991b-40ce-bc40-7a8332580dc6":36,"90d5ce1c-cbc6-4213-992b-b1f38e1e0640":36,"d79ad666-2692-47cb-b734-76bbb9e03b94":36,"f2837286-ed58-4e11-bb47-d7cb67d3d254":36,"02693259-1c91-43a7-8395-ff783c50891b":36,"9cc52bcb-3ecb-11ea-8017-02437075395e":36,"9ec1f7c1-5500-436f-8490-71d63b520457":36,"7bc3da9e-4c48-4546-a5fc-33621d759268":36,"81b8291d-f497-47b5-a32b-9676866a1a91":36,"427f70ba-9eeb-4240-88a4-41b0652a7d66":36,"762d1155-436f-493f-9824-a1c9a4f5aeea":48,"f2ad7617-742d-4985-82da-e0391d199766":36,"4c38fb87-f1ef-4b15-a53e-74ded21207b9":36,"9cc48ca0-3ecb-11ea-8017-02437075395e":45,"d3ab98ce-00cd-4273-9eb4-68004a81f285":48,"61a89391-d490-4c14-8f12-7a787b1b4369":48,"0a8f18ca-a0a2-4644-9690-4a744d91c2d1":36,"9cc521ac-3ecb-11ea-8017-02437075395e":36,"6d190aa0-f6ad-41d5-a580-551005218d86":36,"1bbe5e44-b74c-4152-9909-4642051906ea":36,"442d26cf-99c4-464f-81fd-43a758c535cc":36,"a0b9de22-dd7c-4df5-a608-977f9e121267":36,"064d69ff-3d4a-4377-8e0a-4568876a7ad0":36,"9cc520c4-3ecb-11ea-8017-02437075395e":36,"e3bbff44-9e76-4428-a643-074cdeec5bb4":36,"a902bd44-8fc1-4e45-a40f-df0e553e22de":36,"1249bc0e-84f3-4ba3-aa00-ce4cde748cb5":36,"32335923-1316-4698-9fae-8c7b5aa31650":36,"5a48da56-06da-41c4-b617-f52b3e3b882e":36,"54298455-2a47-43c9-9c2d-10a857625d8b":48,"0f3258fb-05fa-4c7b-9bd0-41cb1a77f58e":48,"9cf92883-64a9-43d8-b49c-6f1e34427c45":36,"9cc51436-3ecb-11ea-8017-02437075395e":36,"03a11d52-135d-4409-aafe-a5c6663497b4":36,"b783336d-488a-4f08-a2c0-c20f1b5d38fc":36,"10a8e2b7-4ed8-490a-a051-31301c2a56f2":48,"1529b6fe-6267-44d2-a2ba-c768d966e61e":36,"8c35113f-0797-4d62-9527-b6c786d43b99":36,"eb443c86-d7e8-4899-9fc8-da71d925399e":36,"1cf5b768-e72b-418d-b5a4-d763c7539cc2":49,"9cc5480b-3ecb-11ea-8017-02437075395e":36,"98033658-877c-4871-8551-2d18581101e8":48,"832db26f-d11c-4fc9-b223-77bc8478a648":48,"2b48dade-e29f-43f5-a606-583f6112e9b0":48,"aa5c4f07-c56a-4242-91a8-e68fc1cbadb5":36,"27f23e53-8a13-44a8-a637-07d94ca2e126":36,"d5874429-f79b-433d-b290-66717331b5e9":36,"c9b3795f-5a4f-4f9b-a8fe-aae244df5610":48,"25f0d228-a9ae-431a-8cc1-5241e0f52082":36,"096ee21b-b463-4a0e-9b73-7a8f9e88957e":36,"0651dc83-01f7-472b-ad4a-afcb8394d734":45,"8ce9eda7-2c38-4104-8656-4e350e361e5a":36,"dc9cdf10-58e9-47e0-8ced-783a7e1bf07d":36,"f5d1dad4-587b-4bd1-8d33-1f52574c9591":36,"d5683ca6-f02b-4a61-8453-3e04119ba480":36};
 
+// INR→EUR: 1 EUR ≈ 112.36 INR (Google Finance, Aug 2026)
+const INR_PER_EUR = 112.36;
+
+// City name aliases: extension city name → Excel city name (for distance lookup)
+const CITY_DISTANCE_ALIAS = {
+  "Alapuzha": "Alappuzha",
+  "Rameswaram  ": "Rameswaram",
+  "Bodi": "Bodinayakanur",
+};
+
+// Road distances (km) between city pairs, sourced from City_Pair_Road_Distances.xlsx
+const DISTANCE_MAP = {
+  "Bengaluru|Alappuzha":593,"Alappuzha|Bengaluru":593,
+  "Bengaluru|Chennai":346,"Chennai|Bengaluru":346,
+  "Bengaluru|Coimbatore":366,"Coimbatore|Bengaluru":366,
+  "Bengaluru|Hyderabad":567,"Hyderabad|Bengaluru":567,
+  "Bengaluru|Kochi":547,"Kochi|Bengaluru":547,
+  "Bengaluru|Madurai":434,"Madurai|Bengaluru":434,
+  "Bengaluru|Nagercoil":661,"Nagercoil|Bengaluru":661,
+  "Bengaluru|Ongole":510,"Ongole|Bengaluru":510,
+  "Bengaluru|Pondicherry":311,"Pondicherry|Bengaluru":311,
+  "Bengaluru|Rajahmundry":800,"Rajahmundry|Bengaluru":800,
+  "Bengaluru|Thiruvalla":618,"Thiruvalla|Bengaluru":618,
+  "Bengaluru|Tiruchendur":614,"Tiruchendur|Bengaluru":614,
+  "Bengaluru|Tirunelveli":581,"Tirunelveli|Bengaluru":581,
+  "Bengaluru|Trivandrum":728,"Trivandrum|Bengaluru":728,
+  "Bengaluru|Velankanni":484,"Velankanni|Bengaluru":484,
+  "Bengaluru|Vijayawada":650,"Vijayawada|Bengaluru":650,
+  "Bengaluru|Visakhapatnam":990,"Visakhapatnam|Bengaluru":990,
+  "Chennai|Coimbatore":510,"Coimbatore|Chennai":510,
+  "Chennai|Cumbum":546,"Cumbum|Chennai":546,
+  "Chennai|Hyderabad":627,"Hyderabad|Chennai":627,
+  "Chennai|Kochi":690,"Kochi|Chennai":690,
+  "Chennai|Madurai":462,"Madurai|Chennai":462,
+  "Chennai|Munnar":589,"Munnar|Chennai":589,
+  "Chennai|Bodinayakanur":522,"Bodinayakanur|Chennai":522,
+  "Chennai|Nagercoil":704,"Nagercoil|Chennai":704,
+  "Chennai|Pollachi":537,"Pollachi|Chennai":537,
+  "Chennai|Pondicherry":155,"Pondicherry|Chennai":155,
+  "Chennai|Rameswaram":559,"Rameswaram|Chennai":559,
+  "Chennai|Tiruchendur":639,"Tiruchendur|Chennai":639,
+  "Chennai|Tiruchirapalli":330,"Tiruchirapalli|Chennai":330,
+  "Chennai|Tirunelveli":624,"Tirunelveli|Chennai":624,
+  "Chennai|Udankudi":650,"Udankudi|Chennai":650,
+  "Chennai|Vijayawada":453,"Vijayawada|Chennai":453,
+  "Chennai|Visakhapatnam":799,"Visakhapatnam|Chennai":799,
+  "Coimbatore|Vijayawada":951,"Vijayawada|Coimbatore":951,
+  "Hyderabad|Goa":658,"Goa|Hyderabad":658,
+  "Hyderabad|Kakinada":484,"Kakinada|Hyderabad":484,
+  "Hyderabad|Nellore":453,"Nellore|Hyderabad":453,
+  "Hyderabad|Pondicherry":784,"Pondicherry|Hyderabad":784,
+  "Hyderabad|Tirupati":562,"Tirupati|Hyderabad":562,
+  "Hyderabad|Vijayawada":272,"Vijayawada|Hyderabad":272,
+  "Hyderabad|Visakhapatnam":619,"Visakhapatnam|Hyderabad":619,
+  "Hyderabad|Vizianagaram":668,"Vizianagaram|Hyderabad":668,
+  "Vijayawada|Visakhapatnam":347,"Visakhapatnam|Vijayawada":347,
+};
+
+function normalizeDistanceCity(name) {
+  const trimmed = (name || "").trim();
+  return CITY_DISTANCE_ALIAS[trimmed] || trimmed;
+}
+
+function getRouteDistance(fromCity, toCity) {
+  const a = normalizeDistanceCity(fromCity);
+  const b = normalizeDistanceCity(toCity);
+  return DISTANCE_MAP[`${a}|${b}`] ?? DISTANCE_MAP[`${b}|${a}`] ?? null;
+}
+
 // Look up line code for a FlixBus service using the first 36 chars of serviceId as the Line UUID
 // Returns line code string, or "NA" if not found
 function lookupLineCode(serviceId) {
@@ -227,6 +322,10 @@ function renderComparisonTable() {
   const filterValue = document.getElementById("productTypeFilter").value;
   let filteredData = filterByBusType(allComparisonData, filterValue);
 
+  const fromCityName = document.getElementById("fromCity").selectedOptions[0]?.text || "";
+  const toCityName = document.getElementById("toCity").selectedOptions[0]?.text || "";
+  const routeDistance = getRouteDistance(fromCityName, toCityName);
+
   // Apply Flix + IntrCity focus filter if active
   if (focusFilterActive) {
     filteredData = filteredData.filter(bus => {
@@ -238,8 +337,17 @@ function renderComparisonTable() {
   const tbody = document.querySelector("#comparisonTable tbody");
   tbody.innerHTML = "";
 
-  const fromCity = document.getElementById("fromCity").value;
-  const toCity   = document.getElementById("toCity").value;
+  // Determine if every Flix bus with a known line code is marked D — if so, suppress row highlight
+  const flixWithCode = filteredData.filter(bus => {
+    if (!bus.travelsName.toLowerCase().includes("flix")) return false;
+    const lc = lookupLineCode(bus.serviceId);
+    return lc !== "NA" && lc !== "-";
+  });
+  const allFlixD = flixWithCode.length > 0 && flixWithCode.every(bus => {
+    const lc = lookupLineCode(bus.serviceId);
+    const product = busProduct(bus.isSeater, bus.isSleeper);
+    return ndStatusMap[ndKey(lc, product)] === "D";
+  });
 
   filteredData.forEach(bus => {
     const tr = document.createElement("tr");
@@ -249,16 +357,16 @@ function renderComparisonTable() {
       tr.classList.add("flixbus");
       const rank = Number(bus.SRPRank);
       const total = totalInventoryBusCount;
-      let rankColor = "#73d700"; // default bright green (fallback for NA or unknown)
+      let rankColor = "#73d700";
       if (total > 0 && !isNaN(rank)) {
         if (rank <= Math.ceil(total * 0.10)) {
-          rankColor = "#1a7a00";      // dark green  — top 10%
+          rankColor = "#1a7a00";
         } else if (rank <= Math.ceil(total * 0.20)) {
-          rankColor = "#73d700";      // light green — next 10%
+          rankColor = "#73d700";
         } else if (rank > Math.floor(total * 0.75)) {
-          rankColor = "#d9534f";      // red         — bottom 25%
+          rankColor = "#d9534f";
         } else {
-          rankColor = "#f0ad4e";      // yellow      — middle 65%
+          rankColor = "#f0ad4e";
         }
       }
       tr.style.borderLeft = `4px solid ${rankColor}`;
@@ -279,24 +387,30 @@ function renderComparisonTable() {
       ? `<span style="color:#1a6ecf;font-size:10px;margin-right:4px;" title="Volvo">●</span>${bus.travelsName}`
       : bus.travelsName;
 
-    // ND/D column: dropdown for Flix buses keyed by lineCode|fromCity|toCity|product; dash for others
+    // ND/D column: dropdown for Flix buses keyed by lineCode|product; dash for others
     let ndCell = `<td>-</td>`;
+    let currentNdValue = "";
     if (isFlix && lineCode !== "NA" && lineCode !== "-") {
       const product = busProduct(bus.isSeater, bus.isSleeper);
-      const key = ndKey(lineCode, fromCity, toCity, product);
-      const current = ndStatusMap[key] || "";
+      const key = ndKey(lineCode, product);
+      currentNdValue = ndStatusMap[key] || "";
       ndCell = `<td><select class="nd-select" data-nd-key="${key}">
-        <option value="" ${current === "" ? "selected" : ""}></option>
-        <option value="ND" ${current === "ND" ? "selected" : ""}>ND</option>
-        <option value="D" ${current === "D" ? "selected" : ""}>D</option>
+        <option value="" ${currentNdValue === "" ? "selected" : ""}></option>
+        <option value="ND" ${currentNdValue === "ND" ? "selected" : ""}>ND</option>
+        <option value="D" ${currentNdValue === "D" ? "selected" : ""}>D</option>
       </select></td>`;
+    }
+
+    // Dark green row highlight for D buses — only when not all Flix are D
+    if (isFlix && currentNdValue === "D" && !allFlixD) {
+      tr.classList.add("flixbus-dedicated");
     }
 
     // Yellow dot before line code if ND/D not yet set for this Flix bus
     let lineCodeDisplay = lineCode;
     if (isFlix && lineCode !== "NA" && lineCode !== "-") {
       const product = busProduct(bus.isSeater, bus.isSleeper);
-      const key = ndKey(lineCode, fromCity, toCity, product);
+      const key = ndKey(lineCode, product);
       if (!ndStatusMap[key]) {
         lineCodeDisplay = `<span style="color:#f0ad4e;font-size:10px;margin-right:3px;" title="ND/D not set">●</span>${lineCode}`;
       }
@@ -317,6 +431,7 @@ function renderComparisonTable() {
       <td>${bus.SRPRank}</td>
       <td>${bus.pricePoints ?? "NA"}</td>
       <td>${(() => { const r = parseFloat(bus.totalRatings); if (isNaN(r)) return "NA"; if (!isFlix) return `<span style="color:#000;font-weight:600;">${bus.totalRatings}</span>`; const c = r >= 4 ? "#73d700" : r < 3.5 ? "#d9534f" : "#f0ad4e"; return `<span style="color:${c};font-weight:600;">${bus.totalRatings}</span>`; })()}</td>
+      <td>${(() => { const p = bus.LowestPrice; if (p === "NA" || p == null || !routeDistance) return "NA"; const y = (p / INR_PER_EUR) / routeDistance * 100; return y.toFixed(2); })()}</td>
       ${ndCell}
     `;
 
@@ -1058,8 +1173,8 @@ document.getElementById("exportNdBtn").addEventListener("click", () => {
     }
     const rows = [["Line Code", "From City Code", "To City Code", "Bus Product", "ND/D"]];
     entries.forEach(([key, value]) => {
-      const [lineCode, fromCity, toCity, product] = key.split("|");
-      rows.push([lineCode, fromCity, toCity, product, value]);
+      const [lineCode, product] = key.split("|");
+      rows.push([lineCode, "-", "-", product, value]);
     });
     const csv = rows.map(r => r.map(v => `"${v}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -1068,6 +1183,17 @@ document.getElementById("exportNdBtn").addEventListener("click", () => {
     a.download = "nd_d_mapping.csv";
     a.click();
   });
+});
+
+// Today button - set date to today and re-fetch
+document.getElementById("todayBtn").addEventListener("click", async () => {
+  const dojEl = document.getElementById("doj");
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, "0");
+  const dd = String(today.getDate()).padStart(2, "0");
+  dojEl.value = `${yyyy}-${mm}-${dd}`;
+  await fetchAndProcessData(false);
 });
 
 // Next-day button - advance date by 1 day and re-fetch

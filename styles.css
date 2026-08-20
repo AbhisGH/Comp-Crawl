@@ -17,12 +17,27 @@ body {
   gap: 10px;
 }
 
+/* Title group: stacks h2 and date label vertically */
+.header-title-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  flex-shrink: 0;
+}
+
 /* Main heading - left aligned */
 .header-wrapper h2 {
   margin: 0;
-  color: #2c2c2c;
+  color: #73d700;
   text-align: left;
-  flex-shrink: 0;
+}
+
+/* Date subheading below main title */
+.current-date-label {
+  font-size: 11px;
+  color: #2c2c2c;
+  margin-top: 1px;
+  letter-spacing: 0.3px;
 }
 
 /* Minimalistic refresh button styling */
@@ -33,7 +48,7 @@ body {
   border: 1px solid #e0e0e0;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 20px;
+  font-size: 16px;
   transition: all 0.2s;
   white-space: nowrap;
   line-height: 1;
@@ -157,24 +172,45 @@ body {
   border-right: none;
 }
 
-.next-day-btn {
-  padding: 6px 9px;
+.today-btn {
+  padding: 0 7px;
   border: 1px solid #e0e0e0;
   border-left: none;
-  border-radius: 0 5px 5px 0;
+  border-radius: 0;
   background-color: white;
   cursor: pointer;
-  font-size: 16px;
+  font-size: 11px;
   line-height: 1;
   color: #555;
   transition: background-color 0.15s, color 0.15s;
   flex-shrink: 0;
+  align-self: stretch;
+}
+
+.today-btn:hover {
+  background-color: #f0f0f0;
+  color: #333;
+}
+
+.next-day-btn {
+  padding: 0 9px;
+  border: 1px solid #73d700;
+  border-left: none;
+  border-radius: 0 5px 5px 0;
+  background-color: #73d700;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  color: white;
+  transition: background-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+  align-self: stretch;
 }
 
 .next-day-btn:hover {
-  background-color: #73d700;
+  background-color: #5ab800;
+  border-color: #5ab800;
   color: white;
-  border-color: #73d700;
 }
 
 /* ===== Header Action Buttons (Download) ===== */
@@ -475,6 +511,11 @@ background-color: #73d700;
 
 #operatorTable tbody tr.flixbus:hover {
   background-color: #e6ffcc;
+}
+
+/* Dedicated (D) Flix rows — dark green, only shown when not all buses are D */
+#comparisonTable tbody tr.flixbus-dedicated {
+  background-color: #d4f5a0;        /* medium green shade */
 }
 
 /* ===== Legend (dot key below heading) ===== */

@@ -11,7 +11,10 @@
   <div class="container">
     <!-- Main heading with bus count and refresh button -->
     <div class="header-wrapper">
-      <h2>Relation Crawl</h2>
+      <div class="header-title-group">
+        <h2>Relation Crawl</h2>
+        <div id="currentDateLabel" class="current-date-label"></div>
+      </div>
       <span id="busCount" class="bus-count"></span>
       <button id="downloadBtn" class="header-download-btn" title="Compare and Download">⬇</button>
       <button id="refreshBtn" class="refresh-btn" title="Reset everything">↻</button>
@@ -32,6 +35,7 @@
 
       <div class="doj-wrapper">
         <input id="doj" type="date" />
+        <button id="todayBtn" class="today-btn" title="Go to today">Today</button>
         <button id="nextDayBtn" class="next-day-btn" title="Next day">›</button>
       </div>
       
@@ -109,6 +113,7 @@
             <th class="srp-rank-col">Rank on RB</th>
             <th>Price Points</th>
             <th>Ratings</th>
+            <th>Yield</th>
             <th>ND/D</th>
           </tr>
         </thead>
