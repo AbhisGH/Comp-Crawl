@@ -375,7 +375,9 @@ background-color: #73d700;
 }
 
 .filter-nav-btn {
-  padding: 4px 8px;
+  padding: 0 8px;
+  height: 30px;
+  box-sizing: border-box;
   background-color: white;
   color: #666;
   border: 1px solid #e0e0e0;
@@ -393,7 +395,9 @@ background-color: #73d700;
 }
 
 .filter-dropdown {
-  padding: 6px 10px;
+  height: 30px;
+  box-sizing: border-box;
+  padding: 0 10px;
   border-radius: 5px;
   border: 1px solid #e0e0e0;
   background-color: white;
@@ -468,15 +472,71 @@ background-color: #73d700;
   text-align: center;
 }
 
-/* ND/D dropdown in comparison table */
-.nd-select {
-  font-size: 11px;
-  padding: 2px 2px;
+/* ND/D quick-select buttons in comparison table */
+.nd-btn-group {
+  display: flex;
+  gap: 2px;
+  justify-content: center;
+}
+
+.nd-btn {
+  font-size: 10px;
+  padding: 2px 5px;
   border: 1px solid #ccc;
   border-radius: 3px;
   background: white;
+  color: #888;
   cursor: pointer;
-  width: 44px;
+  font-weight: 500;
+  line-height: 1.4;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.nd-btn:hover {
+  border-color: #999;
+  color: #333;
+}
+
+.nd-btn.nd-active-d {
+  background: #73d700;
+  color: white;
+  border-color: #73d700;
+}
+
+.nd-btn.nd-active-nd {
+  background: #f0ad4e;
+  color: white;
+  border-color: #f0ad4e;
+}
+
+/* Floating ND/D dialog (shown on row double-click) */
+#nd-dialog {
+  position: fixed;
+  display: none;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 8px 10px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+  z-index: 9999;
+  min-width: 100px;
+}
+
+.nd-dialog-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 6px;
+  text-align: center;
+}
+
+#nd-dialog .nd-btn-group {
+  gap: 6px;
+}
+
+#nd-dialog .nd-btn {
+  padding: 4px 14px;
+  font-size: 12px;
 }
 
 /* ===== Sticky Headers ===== */

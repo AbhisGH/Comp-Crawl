@@ -7,9 +7,6 @@ let allComparisonData = [];
 let allRowsData = [];
 let totalInventoryBusCount = 0;
 
-// RedBus connection status
-let redbusConnectionStatus = false;
-
 // Focus filter state for Flix + IntrCity toggle
 let focusFilterActive = false;
 
@@ -23,8 +20,9 @@ function busProduct(isSeater, isSleeper) {
   return "Unknown";
 }
 
-function ndKey(lineCode, product) {
-  return `${lineCode}|${product}`;
+function ndKey(lineCode, product, fromCity, toCity) {
+  const [c1, c2] = [fromCity, toCity].sort();
+  return `${lineCode}|${c1}|${c2}|${product}`;
 }
 
 function loadNdStatusMap(cb) {
@@ -35,13 +33,14 @@ function loadNdStatusMap(cb) {
     Object.entries(raw).forEach(([key, value]) => {
       const parts = key.split("|");
       if (parts.length === 4) {
-        // Old format: lineCode|fromCity|toCity|product → new: lineCode|product
-        const newKey = `${parts[0]}|${parts[3]}`;
-        // Prefer "D" if multiple old keys collapse to the same new key
-        if (!migrated[newKey] || value === "D") migrated[newKey] = value;
-        changed = true;
+        // Normalize direction: sort the two city parts so A→B and B→A share one key
+        const [c1, c2] = [parts[1], parts[2]].sort();
+        const newKey = `${parts[0]}|${c1}|${c2}|${parts[3]}`;
+        if (newKey !== key) changed = true;
+        if (!migrated[newKey]) migrated[newKey] = value;
       } else {
-        migrated[key] = value;
+        // 2-part keys (lineCode|product) have no city info — drop them
+        changed = true;
       }
     });
     ndStatusMap = migrated;
@@ -139,36 +138,6 @@ const cities = {
   "Visakhapatnam": 248
 };
 
-// Initialize RedBus connection and show status
-async function initializeRedbusConnection() {
-  const statusEl = document.getElementById("redbusStatus");
-  
-  try {
-    // Show loading state
-    statusEl.textContent = "Connecting to RedBus...";
-    statusEl.className = "redbus-status connecting";
-    
-    // Send message to background script to initialize RedBus
-    const response = await chrome.runtime.sendMessage({ type: "INIT_REDBUS" });
-    
-    if (response.success) {
-      redbusConnectionStatus = true;
-      statusEl.textContent = "RedBus Connected ✅";
-      statusEl.className = "redbus-status connected";
-      return true;
-    } else {
-      throw new Error(response.error || "Unknown error");
-    }
-  } catch (error) {
-    console.error("Failed to initialize RedBus:", error);
-    redbusConnectionStatus = false;
-    statusEl.textContent = "RedBus Connection Failed ❌";
-    statusEl.className = "redbus-status error";
-    return false;
-  }
-}
-
-// Check RedBus status on popup load
 document.addEventListener("DOMContentLoaded", async () => {
   const now = new Date();
   const day = String(now.getDate()).padStart(2, "0");
@@ -179,22 +148,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("currentDateLabel").textContent =
     `${day} ${month} (${weekday}, Wk ${weekNo})`;
 
-  // Check if RedBus is already initialized
-  try {
-    const status = await chrome.runtime.sendMessage({ type: "CHECK_REDBUS_STATUS" });
-    const statusEl = document.getElementById("redbusStatus");
-    
-    if (status.ready) {
-      redbusConnectionStatus = true;
-      statusEl.textContent = "RedBus Connected ✅";
-      statusEl.className = "redbus-status connected";
-    } else {
-      statusEl.textContent = "RedBus Not Connected";
-      statusEl.className = "redbus-status disconnected";
-    }
-  } catch (error) {
-    console.error("Error checking RedBus status:", error);
-  }
 });
 
 // Filter buses based on bus type selection
@@ -226,11 +179,11 @@ function filterByBusType(buses, filterValue) {
 // ===== Line Code & Seat Lookup via Line UUID =====
 // Maps FlixBus Line UUID (first 36 chars of serviceId) -> Line Code
 // Maps FlixBus Line UUID -> Total Seats (hardcoded from master_india_lines.csv)
-// Source: master_india_lines.csv
+// Source: master_india_lines.csv (UUIDs) + indian_next_ride_capacity.xlsx (capacity)
 const LINE_UUID_MAP = {"1f91dcfe-6c36-441b-8ac8-c21cb972be43":"DELIGI01","b496b789-c346-4334-b548-395646d9d6ee":"IN0110","0f1aa3d4-df77-4730-8e54-01f64e0f4e2e":"IN0110A","95572923-ef71-4cf3-8ac7-77104851b017":"IN0120","592aa978-56af-4a3c-98bd-3451653d91b0":"IN0120A","7dbec444-d67e-4eb8-9019-fa4148b754f4":"IN0120B","db480497-d8fd-4f0f-835a-163875d40459":"IN0120C","69096e6f-56c7-4b5a-857c-d9670f8d852f":"IN0120D","e854c90e-7086-4c07-8223-9a46a64ff388":"IN0120F","26a88e60-9865-4bae-84a7-351c6b8f6787":"IN0121","ec18d028-29b3-413a-a15a-7efa504ad5f3":"IN0121A","757bf869-56c7-46b2-939b-71ba3759a7e7":"IN0121B","16ae39f0-cf08-4e9d-875a-3020c95dc747":"IN0121C","b68a588d-ebf4-4ada-8532-057e7bed7ff8":"IN0121D","96e09857-d296-416d-a176-db031d02fac3":"IN0122","63972f6d-b7e8-4437-97f7-5c5e0966a945":"IN0123","317a9a51-0de6-4b73-921e-dae6334f916b":"IN0210","84dfe4fa-9623-4cf7-a21c-268b8eeaf71a":"IN0210A","557534dd-713e-4ab3-9f91-e31093d1ff58":"IN0210B","75d99d81-e5d9-4428-b4c2-823720dc2095":"IN0210C","662f1104-e6f6-480c-8eba-32bbfc5997c9":"IN0210D","e6c19428-2d69-46d1-8c2c-2927d2b7266c":"IN0210E","23750bb4-cc6b-461e-ab14-21c636f7b70d":"IN0211","89567f53-2da1-4b1b-baaf-aefbdcda5ee1":"IN0211B","30bafa9e-4f46-4d66-95da-79a22552f33c":"IN0211C","b0331778-942d-478c-b751-cac180ce1d7a":"IN0212","aded58fd-bb0c-45e3-b6cd-51638968ff3d":"IN0212A","130d0b12-f2b0-4783-8005-8573ca680346":"IN0212B","746c24d8-de45-4a1e-aa48-a46dc375f30a":"IN0212C","22a4a751-d72a-416f-a480-2c803b0f8401":"IN0213","3c7c4278-dcef-43db-92c1-3a55b0f87eed":"IN0213A","8f7da77d-ee56-446b-b4ef-bc9fe5434a0b":"IN0213B","0cb111c4-0e4f-4fc9-9918-32caa6576a6d":"IN0214","6bb878a0-bd20-4ad4-af72-9fb9696e8f55":"IN0214A","72c51962-5e58-492a-921e-7cdd68f161d5":"IN0310","218453a2-cc03-44d1-8840-cbdb60c8e079":"IN0310A","2a69f65d-f9b2-4ad4-b657-948d554c37de":"IN0310B","bfe5b1e4-bff3-4715-8b73-5de6ff98cf77":"IN0310C","92e62b01-1052-44a2-9810-9f93add164e3":"IN0310D","77223855-3b4e-4242-9ffe-1a0d1d9f566f":"IN0310E","fe17591f-fbfc-4479-9897-203d362471ef":"IN0310F","1aecc57b-425e-4804-9599-5db8857c1167":"IN0310G","24c49b22-fcc9-4e97-909e-37308c3c0530":"IN0310H","88f7497e-ac79-4ad8-9e71-fe3f0e54df0e":"IN0310I","7f953dcc-3610-4d4b-b993-3c046f643c8b":"IN0310J","61cf7e33-9946-4a0b-a8d0-023b004df6dd":"IN0310K","86f2b6be-d1b0-40e3-88f6-e535f5c72cc8":"IN0310L","4b619c49-8ed6-4fbd-981d-3486091b5110":"IN0310M","ae2c281e-85ac-4c0e-8649-41ee6b48a3ef":"IN0320","268abe54-c1f5-41cb-885a-ce999a05a1cc":"IN0320A","0c672a51-e005-427b-947b-a39f738a747c":"IN0320B","e24197e0-2dbf-43e2-9c61-76c819360b8a":"IN0320C","288732f9-52e4-445e-9112-3629ecb95fbf":"IN0320D","e1fa0e0a-a170-4ed5-b95f-b7f88f252f46":"IN0410","462461db-7aa9-4130-b372-af49e7e8d823":"IN0410A","73181ec2-b3b1-4981-bc71-ebc4dd4a59e8":"IN0420","93e8ec7a-7ff4-4f4d-a397-49af97bf020c":"IN0420A","0aa0332e-9e86-4e35-8219-dced5ef8d3e2":"IN0421","36e3fc1c-60da-496a-a8fc-b0bf8defb983":"IN0421A","4568ed20-be7c-4375-ac36-d901b4315de3":"IN0421B","fefdb46f-92d0-4c89-bde6-98ea092e3af5":"IN0421C","2efa0764-f95c-45f6-9819-97baf10d9ecd":"IN0422","0392d8fe-1749-48c7-88d0-c2212c937cdf":"IN0423","a09c1cf1-aace-4bc6-820a-c8d4e394d298":"IN0423A","7d4b75c9-a36d-4962-b8c3-a6908c38e6f1":"IN0424","d05ef689-3f28-48a7-804f-f3e464e22d4b":"IN0424A","63f58157-1a22-4c5b-abdf-1da503de7a97":"IN0425","cff5094d-9672-4705-8b45-775f29c0b22b":"IN0426","7e5794e8-2c6c-418c-97b5-35a6654e54f7":"IN0426A","b2e1b3ea-d3dc-4b24-a48b-b5cb3e05c0c2":"IN0426B","efbe9628-2fe0-4a4c-9b79-d978153620d4":"IN0430","a2e1e9bc-c373-4b5a-937c-ce069a1c03be":"IN0430A","b8419be8-3c08-4c9c-b24e-775990b37d37":"IN0510","29ab8429-4444-454f-bd00-d9e4cd94679c":"IN0520","556f243e-bdde-4a9a-83b0-83f96fafd1d0":"IN0520A","8c1d787f-6088-4c5a-b9b1-6ebe4a71a2a8":"IN0520B","34392e36-9ab5-440d-98bc-644f21d11cdc":"IN0520C","247f7368-1ee8-4312-a179-59c9afe1603b":"IN0520D","04970adb-b0e6-4357-8618-50767d2a42e3":"IN0610","efba0533-009b-4f9a-b150-33955802adf0":"IN0610A","de9e09c4-3232-4a46-b26f-5c927497c07b":"IN0613","ebd82b99-ae5d-4b2b-8008-df65c71bedca":"IN0614","9958d1ef-7216-43f2-b19c-4a0dfb81fd08":"IN0614A","626ee11c-429f-4a39-a44f-e9806f83b2c2":"IN0615","3c8926ab-e467-47bc-8125-392d6a1e5285":"IN1011","312c471a-6915-40a2-bb2a-6298c42ae22c":"IN1011A","edd21f55-5e32-4ca3-b837-ab61d0577572":"IN1020","0533b2a9-414c-4b7b-b699-4930d1d2f1ae":"IN1121","01255f7d-4243-4cb6-abfd-9569bbfe6f67":"IN1122","472eb112-4d5b-44c8-8751-4cae526a5454":"IN2100","2cd8377c-d26a-4882-a330-433360361769":"IN2120","6cba8c8b-476d-4167-9001-6b6ca1ea6213":"IN2220","bd936576-d3ce-4da1-940b-88ece36fd6f0":"IN2310","cd140128-87c6-4aad-be17-7514f14f6597":"IN2310A","5303a3ca-f253-41a6-8f04-bab88e3774c8":"IN2310B","9291f8fb-73c0-4cbe-a958-4f4f8c07ad51":"IN2310C","36c17060-0ad8-4fa1-921e-fe32c34fed98":"IN2320","c23cbf40-2379-4bb8-8b61-59c86cd05497":"IN2320A","82fc2f3e-9cb9-47ae-8748-c72564c5073c":"IN2330","f9bd24c3-fc2e-48c1-a5d2-c45f21dd6444":"IN2340","598d6222-0f02-4c8d-9e25-d497ce6cebba":"IN2510","d6a697a4-55a6-46ca-a764-7481f2eb93ec":"IN2511","5da8bbdb-9b0c-4e53-8bc9-32b0173d4dff":"IN2512","043acdd1-3fae-4c70-939c-fe7ca570cb87":"IN2513","9f2be346-0494-4b66-a5de-fb5c70a1f878":"IN2514","b7c1b2a6-c018-4c8a-9046-8d05db2d4b18":"IN2515","9cc50f99-3ecb-11ea-8017-02437075395e":"IN2520","682633a1-33d2-4342-a965-8cd80f07b515":"IN2530","85d0ee98-c9af-42c9-8959-c81a9a3e5080":"IN2810","d87fbbea-8bcc-46e4-98b9-6655c729ceab":"IN2810A","8658a05d-378d-44f1-a4c3-edec716339c1":"IN2810B","53b6f8d4-5bc2-4ca4-90b2-a455449e0826":"IN2820","fdd58745-c866-437c-9263-451b35294d19":"IN2820A","b5034dc5-bd00-4382-91f5-4f7b7905c7f1":"IN2820B","f4adea15-cd9d-4b34-be4d-608ffd73c8f9":"IN2820C","ac62923d-7d74-40c2-9d8d-ac23e67b82b3":"IN4107","a6bbc851-7eb1-45d6-825d-1d5b6250f92f":"IN4108","dc44da0f-097a-4ab6-9d1f-2c14efb410b3":"IN4109","9cc512a7-3ecb-11ea-8017-02437075395e":"IN4110","f13bbb5e-185e-4ca0-96ce-7c74f09854d9":"IN4111","2eb1b3c6-3601-44c9-aad0-40c59f5a1747":"IN4112","3e3f0b79-190c-415d-b4b3-8a0af17a903b":"IN4112A","c1bd3bc9-4af9-426f-97c1-0b713dc1633c":"IN4112B","2ef3470f-116d-437d-9e7d-9ec33d324238":"IN4113","0b440cee-c22f-43a8-be27-8cda7b05a990":"IN4114","7f83b4dc-624d-4081-9fd3-960bd5f26a62":"IN4114A","7631ffca-b9ab-44a7-b382-dee1ccf76e28":"IN4114B","577ca07c-193f-40b6-9215-ea7a782e9212":"IN4115","b7821838-cf83-4d9f-bc5c-9482ea0c053c":"IN4116","ca273143-8395-43db-81ce-76f0697b756e":"IN4117","cc4a2370-69b9-4037-836b-170c3150fbf7":"IN4118","904ecf10-dc2b-48f8-8516-05bbdbd55c8d":"IN4118A","e6dd70a2-1c61-4201-a3e3-2b2251f8e076":"IN4119","ecfa28f3-e8cb-48e4-b88f-782627762d31":"IN4120","1ca668d5-5b28-4586-a379-4b9f6ead429a":"IN4121","65bbacc1-2fcb-4c17-b95f-02d2a95f0b0d":"IN4121A","74976882-a958-4001-ba02-1594786669de":"IN4122","6124fea9-e231-4982-b6bf-4f8cb1d48061":"IN4122A","ddb2a4c0-4625-402f-8918-98ebc19e3ef9":"IN4123","96281b3b-4824-4c09-9e8a-13ec5d920707":"IN4124","64fda8cc-cacf-4ab1-b033-b89ca09338df":"IN4210","7e40176d-2ad5-4b94-a154-a510f5f6c13c":"IN4211","dd48d18c-3df1-433a-956b-9ca9145915a2":"IN4220","1a1860bf-864e-4e08-83c2-8c6da5298fa6":"IN4221","3c1ca721-7e6b-42a2-a991-79d888f46d3e":"IN4222","ec6b7803-498a-411c-afb1-a32e323192e5":"IN4225","676e56eb-d7f1-4c8b-81dd-303e72a781c6":"IN4230","ee5ffe5a-d137-4cf0-a30f-a50179d6e636":"IN4301","ae9d582e-b36e-4c75-93d3-e8c20ebbffdb":"IN4301A","b6453dbe-d4f0-4b0b-893e-ce17c2941c70":"IN4302","87cd1f0a-8cc6-45a8-8d0c-3e4595e53416":"IN4302A","0713bbf9-a31f-4911-bac8-520c82f814e5":"IN4303","1650a1b0-e4bf-4a8f-b840-9fde5b63a202":"IN4303A","e3f52072-8882-4ef2-9b19-3feb040dbeda":"IN4304","be54a433-876e-4020-8dd7-0f42143dfaef":"IN4304A","703ff0d0-67ac-4d47-9a4c-314f6a2eda2c":"IN4305","5eb5484c-36d4-4997-ba33-c3905b9dbc37":"IN4305A","9aeb15ed-c982-4095-8ba7-d0a841b093cb":"IN4306","caa2f327-ad00-47c8-9eb4-1adf03ee07fe":"IN4306A","1cec22ef-3713-4940-85c5-0f610be48a0f":"IN4307","a9f510e4-3a66-4279-be36-48a4f63183f3":"IN4308","633bdcff-01a9-4362-9fdf-eccc47e9e1f5":"IN4308A","c7f82323-aee5-48e4-ac53-639241594abd":"IN4309","48e985f6-3f4f-4a92-b229-cac0c6e8b86e":"IN4310","d392a36e-b893-476d-a090-11a180a6be07":"IN4311","79e73708-7baa-4a97-9096-bb17c4345dc6":"IN4312","c5dfc0b8-fbe4-4cb0-a00a-c0170c3fba50":"IN4313","00c7282e-d2fc-4e7f-8f16-7ea32d582975":"IN4314","712529d8-9527-4ba6-8461-cd6adad8890b":"IN4315","b859338e-b7b4-4613-9463-4fe8fcdd9bcf":"IN4316","223d6130-0393-431e-bb5f-6d55e2372804":"IN4317","54dc5ef8-274c-4b2f-b3f1-41ec174cdae5":"IN4318","6f5ad709-cde0-4ca3-b7df-7fc3c0b1a099":"IN4319","32237ee2-288e-4577-b38a-2b9868534c99":"IN4320","9cc51dd4-3ecb-11ea-8017-02437075395e":"IN4330","983b3b25-8a77-4db1-bdb9-ae8d6474216f":"IN4331","852c456e-c71e-48e5-9b8b-31d761afc11c":"IN4332","65949ade-ace5-44f8-9d84-a0519fa63309":"IN4335","2ce33977-fc19-4fab-b580-f92200d12e0e":"IN4338","9cc51727-3ecb-11ea-8017-02437075395e":"IN4340","731c7322-876d-48cb-aded-369dee74996f":"IN4341","233cb514-b995-4e1f-bbc2-e229ea7e11f5":"IN4342","794631db-962f-45eb-96d5-98bc6bf0ca04":"IN4343","fe53d4f3-cc4d-46f0-a414-8446ec634994":"IN4344","5935fa29-8a40-402c-88d8-c88f275b14d7":"IN4352","36c31e69-2694-42f6-a5ce-6a29373737de":"IN4410","7651465b-c42f-4bca-82a3-c78e08e1a5f0":"IN4411","093da6cb-7d78-4d4d-931e-119cac4c2c9e":"IN4412","f6e1dea9-78f8-4a55-bea2-932325fac8fc":"IN4413","c0a96a28-ab97-48ad-9b5e-2eb8806eae39":"IN4414","d8ac7c03-b2f5-4e68-9579-5a8aa2a4d4b1":"IN4415","fa612f41-6f0c-4459-92e8-6b8a6f27b42b":"IN4416","907a0df7-1080-4747-b35a-bf2b72887c9b":"IN4420","5c133168-991b-40ce-bc40-7a8332580dc6":"IN4430","e810feb0-6485-4f95-a858-6ecc1d4ec8d5":"IN4431","90d5ce1c-cbc6-4213-992b-b1f38e1e0640":"IN4450","207fc2cf-333e-4ab4-ac95-22a303029990":"IN4451","d79ad666-2692-47cb-b734-76bbb9e03b94":"IN4520","57dbb155-e056-4b38-836c-6e6a904dbb55":"IN4521","b0e308e8-8f8c-4c90-b216-5a10dd8f52be":"IN4530","f2837286-ed58-4e11-bb47-d7cb67d3d254":"IN4540","0abf4cdf-0be5-481a-9760-c6a2dfc2dd22":"IN4541","02693259-1c91-43a7-8395-ff783c50891b":"IN4580","d5ba3ca8-dfb1-451c-a0c1-0b047dd5f54e":"IN4581","9cc52bcb-3ecb-11ea-8017-02437075395e":"IN4610","6bb82799-b557-4258-8b07-0ac8c8172743":"IN4610A","9ec1f7c1-5500-436f-8490-71d63b520457":"IN4710","7bc3da9e-4c48-4546-a5fc-33621d759268":"IN4710A","9cc46d6b-3ecb-11ea-8017-02437075395e":"IN4720","81b8291d-f497-47b5-a32b-9676866a1a91":"IN5111","427f70ba-9eeb-4240-88a4-41b0652a7d66":"IN5112","762d1155-436f-493f-9824-a1c9a4f5aeea":"IN5113","f2ad7617-742d-4985-82da-e0391d199766":"IN5113A","82bc8eda-4bd3-4917-bd14-50d0e8911de7":"IN5114","4c38fb87-f1ef-4b15-a53e-74ded21207b9":"IN5116","9cc48ca0-3ecb-11ea-8017-02437075395e":"IN5120","0b6675aa-2470-4344-ae9e-b79d52b2948a":"IN5124","ea750f2b-86a9-4068-bed5-813f5d96eb64":"IN5125","d3ab98ce-00cd-4273-9eb4-68004a81f285":"IN5126","61a89391-d490-4c14-8f12-7a787b1b4369":"IN5127","9dc0151a-4988-4322-8423-1bc2dfeba3e4":"IN5128","0a8f18ca-a0a2-4644-9690-4a744d91c2d1":"IN5129","9cc521ac-3ecb-11ea-8017-02437075395e":"IN5130","6d190aa0-f6ad-41d5-a580-551005218d86":"IN5131","be632e35-bcbf-4927-afbd-c09c61a8baf7":"IN5132","89336d7b-a742-4f34-a5fc-231595e68ed5":"IN5133","e2ac9b4c-d0ea-4458-b4e5-23317608436d":"IN5133A","987be449-eb37-4a85-81b5-b1d714903cb2":"IN5134","6b776a05-4fb5-4a18-af15-7b3e5f12ecb0":"IN5135","1bbe5e44-b74c-4152-9909-4642051906ea":"IN5136","d8bb3596-7324-40dd-a5f8-36209d6a9daa":"IN5136A","001db47f-cc22-4fda-aa11-c14c3e4942f0":"IN5136B","442d26cf-99c4-464f-81fd-43a758c535cc":"IN5137","a0b9de22-dd7c-4df5-a608-977f9e121267":"IN5138","064d69ff-3d4a-4377-8e0a-4568876a7ad0":"IN5139","9cc520c4-3ecb-11ea-8017-02437075395e":"IN5140","e3bbff44-9e76-4428-a643-074cdeec5bb4":"IN5141","e66f5af4-d1b5-4e03-a910-8ed5bd10cd4c":"IN5142","a902bd44-8fc1-4e45-a40f-df0e553e22de":"IN5143","d87ec409-be71-44d7-a25f-9a42e092b423":"IN5144","0f74b146-d100-4cec-94b0-c04d223fecb2":"IN5144A","1249bc0e-84f3-4ba3-aa00-ce4cde748cb5":"IN5210","32335923-1316-4698-9fae-8c7b5aa31650":"IN5211","5a48da56-06da-41c4-b617-f52b3e3b882e":"IN5212","54298455-2a47-43c9-9c2d-10a857625d8b":"IN5213","0f3258fb-05fa-4c7b-9bd0-41cb1a77f58e":"IN5214","9cf92883-64a9-43d8-b49c-6f1e34427c45":"IN5215","9cc51436-3ecb-11ea-8017-02437075395e":"IN5216","03a11d52-135d-4409-aafe-a5c6663497b4":"IN5217","35264b93-210b-4f5c-a495-aeb62d3bc64d":"IN5218","b783336d-488a-4f08-a2c0-c20f1b5d38fc":"IN5220","10a8e2b7-4ed8-490a-a051-31301c2a56f2":"IN5221","15076c53-ef6c-458d-ae61-ca014786a32c":"IN5222","1529b6fe-6267-44d2-a2ba-c768d966e61e":"IN5229","8c35113f-0797-4d62-9527-b6c786d43b99":"IN5230","eb443c86-d7e8-4899-9fc8-da71d925399e":"IN5270","1cf5b768-e72b-418d-b5a4-d763c7539cc2":"IN5310","1bae0d7e-b139-4c75-8727-cc6c5b2d8d69":"IN5311","9cc5480b-3ecb-11ea-8017-02437075395e":"IN5320","2982ed18-3a48-4aa0-bb27-1351192a825b":"IN5321","98033658-877c-4871-8551-2d18581101e8":"IN5322","832db26f-d11c-4fc9-b223-77bc8478a648":"IN5323","2b48dade-e29f-43f5-a606-583f6112e9b0":"IN5324","aa5c4f07-c56a-4242-91a8-e68fc1cbadb5":"IN5325","27f23e53-8a13-44a8-a637-07d94ca2e126":"IN5328","d5874429-f79b-433d-b290-66717331b5e9":"IN5335","c9b3795f-5a4f-4f9b-a8fe-aae244df5610":"IN5336","25f0d228-a9ae-431a-8cc1-5241e0f52082":"IN5340","096ee21b-b463-4a0e-9b73-7a8f9e88957e":"IN5340A","da65e851-42fc-4fae-8b0a-87eec4d42f22":"IN5341","040d87e2-ae93-4e6f-8a72-3b1c93baeaac":"IN5342","0651dc83-01f7-472b-ad4a-afcb8394d734":"IN5410","8472951e-6fc2-447d-b9ff-2a413be75df3":"IN5411","8ce9eda7-2c38-4104-8656-4e350e361e5a":"IN5510","dc9cdf10-58e9-47e0-8ced-783a7e1bf07d":"IN5530","f5d1dad4-587b-4bd1-8d33-1f52574c9591":"IN5536","a835c85a-38be-408b-bfe7-5b8a8fec1e03":"IN5540","30986d98-e522-4b27-9984-67bce5080b74":"IN5710","d5683ca6-f02b-4a61-8453-3e04119ba480":"IN5910","33bb4dc1-eff9-49ee-a031-4828e4c8ff44":"IN5911","3fd4d20b-3859-472d-b4a2-0fdb77faf9b4":"INTEST","5d1b0dba-fce9-4760-86bd-3d6d449d4ff5":"INTFLIX","06a48016-cd18-4fcc-a046-fae48781ac81":"INTTEST_2"};
 
-// Maps FlixBus Line UUID -> hardcoded total seat count (from master_india_lines.csv)
-const LINE_SEAT_MAP = {"b496b789-c346-4334-b548-395646d9d6ee":45,"95572923-ef71-4cf3-8ac7-77104851b017":36,"592aa978-56af-4a3c-98bd-3451653d91b0":36,"db480497-d8fd-4f0f-835a-163875d40459":48,"69096e6f-56c7-4b5a-857c-d9670f8d852f":48,"ec18d028-29b3-413a-a15a-7efa504ad5f3":48,"757bf869-56c7-46b2-939b-71ba3759a7e7":48,"317a9a51-0de6-4b73-921e-dae6334f916b":45,"84dfe4fa-9623-4cf7-a21c-268b8eeaf71a":45,"75d99d81-e5d9-4428-b4c2-823720dc2095":45,"23750bb4-cc6b-461e-ab14-21c636f7b70d":45,"89567f53-2da1-4b1b-baaf-aefbdcda5ee1":45,"b0331778-942d-478c-b751-cac180ce1d7a":45,"aded58fd-bb0c-45e3-b6cd-51638968ff3d":49,"130d0b12-f2b0-4783-8005-8573ca680346":49,"22a4a751-d72a-416f-a480-2c803b0f8401":45,"3c7c4278-dcef-43db-92c1-3a55b0f87eed":45,"0cb111c4-0e4f-4fc9-9918-32caa6576a6d":45,"72c51962-5e58-492a-921e-7cdd68f161d5":49,"218453a2-cc03-44d1-8840-cbdb60c8e079":45,"2a69f65d-f9b2-4ad4-b657-948d554c37de":36,"bfe5b1e4-bff3-4715-8b73-5de6ff98cf77":48,"92e62b01-1052-44a2-9810-9f93add164e3":49,"77223855-3b4e-4242-9ffe-1a0d1d9f566f":36,"fe17591f-fbfc-4479-9897-203d362471ef":48,"24c49b22-fcc9-4e97-909e-37308c3c0530":48,"7f953dcc-3610-4d4b-b993-3c046f643c8b":48,"4b619c49-8ed6-4fbd-981d-3486091b5110":48,"ae2c281e-85ac-4c0e-8649-41ee6b48a3ef":49,"268abe54-c1f5-41cb-885a-ce999a05a1cc":36,"0c672a51-e005-427b-947b-a39f738a747c":45,"e24197e0-2dbf-43e2-9c61-76c819360b8a":36,"288732f9-52e4-445e-9112-3629ecb95fbf":48,"e1fa0e0a-a170-4ed5-b95f-b7f88f252f46":45,"462461db-7aa9-4130-b372-af49e7e8d823":45,"36e3fc1c-60da-496a-a8fc-b0bf8defb983":36,"4568ed20-be7c-4375-ac36-d901b4315de3":48,"fefdb46f-92d0-4c89-bde6-98ea092e3af5":48,"0392d8fe-1749-48c7-88d0-c2212c937cdf":36,"7d4b75c9-a36d-4962-b8c3-a6908c38e6f1":36,"d05ef689-3f28-48a7-804f-f3e464e22d4b":48,"63f58157-1a22-4c5b-abdf-1da503de7a97":36,"cff5094d-9672-4705-8b45-775f29c0b22b":36,"7e5794e8-2c6c-418c-97b5-35a6654e54f7":36,"efbe9628-2fe0-4a4c-9b79-d978153620d4":45,"a2e1e9bc-c373-4b5a-937c-ce069a1c03be":22,"29ab8429-4444-454f-bd00-d9e4cd94679c":36,"556f243e-bdde-4a9a-83b0-83f96fafd1d0":36,"04970adb-b0e6-4357-8618-50767d2a42e3":45,"efba0533-009b-4f9a-b150-33955802adf0":48,"ebd82b99-ae5d-4b2b-8008-df65c71bedca":36,"9958d1ef-7216-43f2-b19c-4a0dfb81fd08":36,"3c8926ab-e467-47bc-8125-392d6a1e5285":36,"472eb112-4d5b-44c8-8751-4cae526a5454":36,"2cd8377c-d26a-4882-a330-433360361769":48,"bd936576-d3ce-4da1-940b-88ece36fd6f0":36,"cd140128-87c6-4aad-be17-7514f14f6597":48,"5303a3ca-f253-41a6-8f04-bab88e3774c8":36,"36c17060-0ad8-4fa1-921e-fe32c34fed98":36,"598d6222-0f02-4c8d-9e25-d497ce6cebba":36,"d6a697a4-55a6-46ca-a764-7481f2eb93ec":36,"5da8bbdb-9b0c-4e53-8bc9-32b0173d4dff":36,"043acdd1-3fae-4c70-939c-fe7ca570cb87":48,"682633a1-33d2-4342-a965-8cd80f07b515":36,"85d0ee98-c9af-42c9-8959-c81a9a3e5080":36,"53b6f8d4-5bc2-4ca4-90b2-a455449e0826":48,"fdd58745-c866-437c-9263-451b35294d19":36,"a6bbc851-7eb1-45d6-825d-1d5b6250f92f":36,"dc44da0f-097a-4ab6-9d1f-2c14efb410b3":48,"9cc512a7-3ecb-11ea-8017-02437075395e":36,"f13bbb5e-185e-4ca0-96ce-7c74f09854d9":36,"2eb1b3c6-3601-44c9-aad0-40c59f5a1747":48,"0b440cee-c22f-43a8-be27-8cda7b05a990":48,"577ca07c-193f-40b6-9215-ea7a782e9212":36,"b7821838-cf83-4d9f-bc5c-9482ea0c053c":36,"ca273143-8395-43db-81ce-76f0697b756e":48,"cc4a2370-69b9-4037-836b-170c3150fbf7":36,"e6dd70a2-1c61-4201-a3e3-2b2251f8e076":36,"64fda8cc-cacf-4ab1-b033-b89ca09338df":36,"dd48d18c-3df1-433a-956b-9ca9145915a2":36,"1a1860bf-864e-4e08-83c2-8c6da5298fa6":36,"3c1ca721-7e6b-42a2-a991-79d888f46d3e":48,"ec6b7803-498a-411c-afb1-a32e323192e5":36,"676e56eb-d7f1-4c8b-81dd-303e72a781c6":36,"703ff0d0-67ac-4d47-9a4c-314f6a2eda2c":36,"a9f510e4-3a66-4279-be36-48a4f63183f3":48,"c7f82323-aee5-48e4-ac53-639241594abd":48,"48e985f6-3f4f-4a92-b229-cac0c6e8b86e":36,"d392a36e-b893-476d-a090-11a180a6be07":36,"79e73708-7baa-4a97-9096-bb17c4345dc6":36,"c5dfc0b8-fbe4-4cb0-a00a-c0170c3fba50":36,"00c7282e-d2fc-4e7f-8f16-7ea32d582975":36,"712529d8-9527-4ba6-8461-cd6adad8890b":48,"b859338e-b7b4-4613-9463-4fe8fcdd9bcf":36,"223d6130-0393-431e-bb5f-6d55e2372804":36,"54dc5ef8-274c-4b2f-b3f1-41ec174cdae5":36,"6f5ad709-cde0-4ca3-b7df-7fc3c0b1a099":36,"32237ee2-288e-4577-b38a-2b9868534c99":48,"9cc51dd4-3ecb-11ea-8017-02437075395e":36,"852c456e-c71e-48e5-9b8b-31d761afc11c":36,"65949ade-ace5-44f8-9d84-a0519fa63309":36,"2ce33977-fc19-4fab-b580-f92200d12e0e":36,"9cc51727-3ecb-11ea-8017-02437075395e":36,"731c7322-876d-48cb-aded-369dee74996f":36,"5935fa29-8a40-402c-88d8-c88f275b14d7":36,"7651465b-c42f-4bca-82a3-c78e08e1a5f0":36,"093da6cb-7d78-4d4d-931e-119cac4c2c9e":36,"907a0df7-1080-4747-b35a-bf2b72887c9b":36,"5c133168-991b-40ce-bc40-7a8332580dc6":36,"90d5ce1c-cbc6-4213-992b-b1f38e1e0640":36,"d79ad666-2692-47cb-b734-76bbb9e03b94":36,"f2837286-ed58-4e11-bb47-d7cb67d3d254":36,"02693259-1c91-43a7-8395-ff783c50891b":36,"9cc52bcb-3ecb-11ea-8017-02437075395e":36,"9ec1f7c1-5500-436f-8490-71d63b520457":36,"7bc3da9e-4c48-4546-a5fc-33621d759268":36,"81b8291d-f497-47b5-a32b-9676866a1a91":36,"427f70ba-9eeb-4240-88a4-41b0652a7d66":36,"762d1155-436f-493f-9824-a1c9a4f5aeea":48,"f2ad7617-742d-4985-82da-e0391d199766":36,"4c38fb87-f1ef-4b15-a53e-74ded21207b9":36,"9cc48ca0-3ecb-11ea-8017-02437075395e":45,"d3ab98ce-00cd-4273-9eb4-68004a81f285":48,"61a89391-d490-4c14-8f12-7a787b1b4369":48,"0a8f18ca-a0a2-4644-9690-4a744d91c2d1":36,"9cc521ac-3ecb-11ea-8017-02437075395e":36,"6d190aa0-f6ad-41d5-a580-551005218d86":36,"1bbe5e44-b74c-4152-9909-4642051906ea":36,"442d26cf-99c4-464f-81fd-43a758c535cc":36,"a0b9de22-dd7c-4df5-a608-977f9e121267":36,"064d69ff-3d4a-4377-8e0a-4568876a7ad0":36,"9cc520c4-3ecb-11ea-8017-02437075395e":36,"e3bbff44-9e76-4428-a643-074cdeec5bb4":36,"a902bd44-8fc1-4e45-a40f-df0e553e22de":36,"1249bc0e-84f3-4ba3-aa00-ce4cde748cb5":36,"32335923-1316-4698-9fae-8c7b5aa31650":36,"5a48da56-06da-41c4-b617-f52b3e3b882e":36,"54298455-2a47-43c9-9c2d-10a857625d8b":48,"0f3258fb-05fa-4c7b-9bd0-41cb1a77f58e":48,"9cf92883-64a9-43d8-b49c-6f1e34427c45":36,"9cc51436-3ecb-11ea-8017-02437075395e":36,"03a11d52-135d-4409-aafe-a5c6663497b4":36,"b783336d-488a-4f08-a2c0-c20f1b5d38fc":36,"10a8e2b7-4ed8-490a-a051-31301c2a56f2":48,"1529b6fe-6267-44d2-a2ba-c768d966e61e":36,"8c35113f-0797-4d62-9527-b6c786d43b99":36,"eb443c86-d7e8-4899-9fc8-da71d925399e":36,"1cf5b768-e72b-418d-b5a4-d763c7539cc2":49,"9cc5480b-3ecb-11ea-8017-02437075395e":36,"98033658-877c-4871-8551-2d18581101e8":48,"832db26f-d11c-4fc9-b223-77bc8478a648":48,"2b48dade-e29f-43f5-a606-583f6112e9b0":48,"aa5c4f07-c56a-4242-91a8-e68fc1cbadb5":36,"27f23e53-8a13-44a8-a637-07d94ca2e126":36,"d5874429-f79b-433d-b290-66717331b5e9":36,"c9b3795f-5a4f-4f9b-a8fe-aae244df5610":48,"25f0d228-a9ae-431a-8cc1-5241e0f52082":36,"096ee21b-b463-4a0e-9b73-7a8f9e88957e":36,"0651dc83-01f7-472b-ad4a-afcb8394d734":45,"8ce9eda7-2c38-4104-8656-4e350e361e5a":36,"dc9cdf10-58e9-47e0-8ced-783a7e1bf07d":36,"f5d1dad4-587b-4bd1-8d33-1f52574c9591":36,"d5683ca6-f02b-4a61-8453-3e04119ba480":36};
+// Maps FlixBus Line UUID (RIDE_UUID from sheet) -> hardcoded total seat count
+const LINE_SEAT_MAP = {"b496b789-c346-4334-b548-395646d9d6ee":45,"95572923-ef71-4cf3-8ac7-77104851b017":36,"592aa978-56af-4a3c-98bd-3451653d91b0":36,"7dbec444-d67e-4eb8-9019-fa4148b754f4":48,"db480497-d8fd-4f0f-835a-163875d40459":48,"69096e6f-56c7-4b5a-857c-d9670f8d852f":48,"ec18d028-29b3-413a-a15a-7efa504ad5f3":48,"757bf869-56c7-46b2-939b-71ba3759a7e7":48,"317a9a51-0de6-4b73-921e-dae6334f916b":45,"84dfe4fa-9623-4cf7-a21c-268b8eeaf71a":45,"557534dd-713e-4ab3-9f91-e31093d1ff58":45,"75d99d81-e5d9-4428-b4c2-823720dc2095":45,"662f1104-e6f6-480c-8eba-32bbfc5997c9":41,"23750bb4-cc6b-461e-ab14-21c636f7b70d":45,"89567f53-2da1-4b1b-baaf-aefbdcda5ee1":45,"30bafa9e-4f46-4d66-95da-79a22552f33c":45,"aded58fd-bb0c-45e3-b6cd-51638968ff3d":49,"130d0b12-f2b0-4783-8005-8573ca680346":49,"22a4a751-d72a-416f-a480-2c803b0f8401":45,"3c7c4278-dcef-43db-92c1-3a55b0f87eed":49,"0cb111c4-0e4f-4fc9-9918-32caa6576a6d":45,"6bb878a0-bd20-4ad4-af72-9fb9696e8f55":41,"72c51962-5e58-492a-921e-7cdd68f161d5":45,"218453a2-cc03-44d1-8840-cbdb60c8e079":45,"2a69f65d-f9b2-4ad4-b657-948d554c37de":36,"bfe5b1e4-bff3-4715-8b73-5de6ff98cf77":48,"92e62b01-1052-44a2-9810-9f93add164e3":49,"77223855-3b4e-4242-9ffe-1a0d1d9f566f":36,"fe17591f-fbfc-4479-9897-203d362471ef":48,"1aecc57b-425e-4804-9599-5db8857c1167":48,"24c49b22-fcc9-4e97-909e-37308c3c0530":48,"88f7497e-ac79-4ad8-9e71-fe3f0e54df0e":48,"7f953dcc-3610-4d4b-b993-3c046f643c8b":48,"4b619c49-8ed6-4fbd-981d-3486091b5110":48,"268abe54-c1f5-41cb-885a-ce999a05a1cc":36,"e24197e0-2dbf-43e2-9c61-76c819360b8a":36,"288732f9-52e4-445e-9112-3629ecb95fbf":48,"e1fa0e0a-a170-4ed5-b95f-b7f88f252f46":45,"462461db-7aa9-4130-b372-af49e7e8d823":45,"0aa0332e-9e86-4e35-8219-dced5ef8d3e2":48,"36e3fc1c-60da-496a-a8fc-b0bf8defb983":36,"4568ed20-be7c-4375-ac36-d901b4315de3":48,"fefdb46f-92d0-4c89-bde6-98ea092e3af5":48,"0392d8fe-1749-48c7-88d0-c2212c937cdf":36,"7d4b75c9-a36d-4962-b8c3-a6908c38e6f1":36,"cff5094d-9672-4705-8b45-775f29c0b22b":36,"29ab8429-4444-454f-bd00-d9e4cd94679c":36,"556f243e-bdde-4a9a-83b0-83f96fafd1d0":36,"8c1d787f-6088-4c5a-b9b1-6ebe4a71a2a8":36,"34392e36-9ab5-440d-98bc-644f21d11cdc":36,"04970adb-b0e6-4357-8618-50767d2a42e3":41,"efba0533-009b-4f9a-b150-33955802adf0":45,"ebd82b99-ae5d-4b2b-8008-df65c71bedca":36,"9958d1ef-7216-43f2-b19c-4a0dfb81fd08":36,"3c8926ab-e467-47bc-8125-392d6a1e5285":36,"312c471a-6915-40a2-bb2a-6298c42ae22c":48,"bd936576-d3ce-4da1-940b-88ece36fd6f0":36,"cd140128-87c6-4aad-be17-7514f14f6597":36,"5303a3ca-f253-41a6-8f04-bab88e3774c8":36,"36c17060-0ad8-4fa1-921e-fe32c34fed98":36,"598d6222-0f02-4c8d-9e25-d497ce6cebba":36,"d6a697a4-55a6-46ca-a764-7481f2eb93ec":36,"5da8bbdb-9b0c-4e53-8bc9-32b0173d4dff":36,"043acdd1-3fae-4c70-939c-fe7ca570cb87":48,"85d0ee98-c9af-42c9-8959-c81a9a3e5080":36,"53b6f8d4-5bc2-4ca4-90b2-a455449e0826":36,"fdd58745-c866-437c-9263-451b35294d19":36,"ac62923d-7d74-40c2-9d8d-ac23e67b82b3":36,"a6bbc851-7eb1-45d6-825d-1d5b6250f92f":36,"dc44da0f-097a-4ab6-9d1f-2c14efb410b3":48,"9cc512a7-3ecb-11ea-8017-02437075395e":36,"f13bbb5e-185e-4ca0-96ce-7c74f09854d9":36,"2eb1b3c6-3601-44c9-aad0-40c59f5a1747":48,"0b440cee-c22f-43a8-be27-8cda7b05a990":48,"577ca07c-193f-40b6-9215-ea7a782e9212":36,"b7821838-cf83-4d9f-bc5c-9482ea0c053c":36,"ca273143-8395-43db-81ce-76f0697b756e":48,"cc4a2370-69b9-4037-836b-170c3150fbf7":36,"e6dd70a2-1c61-4201-a3e3-2b2251f8e076":36,"ecfa28f3-e8cb-48e4-b88f-782627762d31":36,"1ca668d5-5b28-4586-a379-4b9f6ead429a":36,"ddb2a4c0-4625-402f-8918-98ebc19e3ef9":36,"96281b3b-4824-4c09-9e8a-13ec5d920707":36,"64fda8cc-cacf-4ab1-b033-b89ca09338df":36,"dd48d18c-3df1-433a-956b-9ca9145915a2":36,"1a1860bf-864e-4e08-83c2-8c6da5298fa6":36,"3c1ca721-7e6b-42a2-a991-79d888f46d3e":48,"676e56eb-d7f1-4c8b-81dd-303e72a781c6":36,"ee5ffe5a-d137-4cf0-a30f-a50179d6e636":48,"ae9d582e-b36e-4c75-93d3-e8c20ebbffdb":48,"b6453dbe-d4f0-4b0b-893e-ce17c2941c70":48,"87cd1f0a-8cc6-45a8-8d0c-3e4595e53416":36,"703ff0d0-67ac-4d47-9a4c-314f6a2eda2c":36,"9aeb15ed-c982-4095-8ba7-d0a841b093cb":36,"1cec22ef-3713-4940-85c5-0f610be48a0f":48,"a9f510e4-3a66-4279-be36-48a4f63183f3":48,"c7f82323-aee5-48e4-ac53-639241594abd":48,"48e985f6-3f4f-4a92-b229-cac0c6e8b86e":36,"d392a36e-b893-476d-a090-11a180a6be07":36,"79e73708-7baa-4a97-9096-bb17c4345dc6":36,"c5dfc0b8-fbe4-4cb0-a00a-c0170c3fba50":36,"00c7282e-d2fc-4e7f-8f16-7ea32d582975":36,"712529d8-9527-4ba6-8461-cd6adad8890b":48,"b859338e-b7b4-4613-9463-4fe8fcdd9bcf":36,"223d6130-0393-431e-bb5f-6d55e2372804":36,"54dc5ef8-274c-4b2f-b3f1-41ec174cdae5":36,"6f5ad709-cde0-4ca3-b7df-7fc3c0b1a099":36,"32237ee2-288e-4577-b38a-2b9868534c99":48,"852c456e-c71e-48e5-9b8b-31d761afc11c":36,"2ce33977-fc19-4fab-b580-f92200d12e0e":36,"9cc51727-3ecb-11ea-8017-02437075395e":36,"731c7322-876d-48cb-aded-369dee74996f":36,"5935fa29-8a40-402c-88d8-c88f275b14d7":36,"7651465b-c42f-4bca-82a3-c78e08e1a5f0":36,"093da6cb-7d78-4d4d-931e-119cac4c2c9e":36,"f6e1dea9-78f8-4a55-bea2-932325fac8fc":36,"fa612f41-6f0c-4459-92e8-6b8a6f27b42b":36,"907a0df7-1080-4747-b35a-bf2b72887c9b":36,"5c133168-991b-40ce-bc40-7a8332580dc6":36,"90d5ce1c-cbc6-4213-992b-b1f38e1e0640":36,"d79ad666-2692-47cb-b734-76bbb9e03b94":36,"f2837286-ed58-4e11-bb47-d7cb67d3d254":36,"02693259-1c91-43a7-8395-ff783c50891b":36,"9cc52bcb-3ecb-11ea-8017-02437075395e":36,"9ec1f7c1-5500-436f-8490-71d63b520457":36,"81b8291d-f497-47b5-a32b-9676866a1a91":36,"427f70ba-9eeb-4240-88a4-41b0652a7d66":36,"762d1155-436f-493f-9824-a1c9a4f5aeea":48,"4c38fb87-f1ef-4b15-a53e-74ded21207b9":36,"d3ab98ce-00cd-4273-9eb4-68004a81f285":48,"61a89391-d490-4c14-8f12-7a787b1b4369":48,"0a8f18ca-a0a2-4644-9690-4a744d91c2d1":36,"9cc521ac-3ecb-11ea-8017-02437075395e":36,"6d190aa0-f6ad-41d5-a580-551005218d86":36,"1bbe5e44-b74c-4152-9909-4642051906ea":36,"442d26cf-99c4-464f-81fd-43a758c535cc":36,"a0b9de22-dd7c-4df5-a608-977f9e121267":36,"064d69ff-3d4a-4377-8e0a-4568876a7ad0":36,"a902bd44-8fc1-4e45-a40f-df0e553e22de":36,"1249bc0e-84f3-4ba3-aa00-ce4cde748cb5":35,"32335923-1316-4698-9fae-8c7b5aa31650":36,"5a48da56-06da-41c4-b617-f52b3e3b882e":36,"54298455-2a47-43c9-9c2d-10a857625d8b":48,"0f3258fb-05fa-4c7b-9bd0-41cb1a77f58e":48,"9cf92883-64a9-43d8-b49c-6f1e34427c45":35,"9cc51436-3ecb-11ea-8017-02437075395e":36,"03a11d52-135d-4409-aafe-a5c6663497b4":36,"b783336d-488a-4f08-a2c0-c20f1b5d38fc":36,"10a8e2b7-4ed8-490a-a051-31301c2a56f2":48,"15076c53-ef6c-458d-ae61-ca014786a32c":48,"8c35113f-0797-4d62-9527-b6c786d43b99":36,"eb443c86-d7e8-4899-9fc8-da71d925399e":36,"9cc5480b-3ecb-11ea-8017-02437075395e":36,"2982ed18-3a48-4aa0-bb27-1351192a825b":36,"98033658-877c-4871-8551-2d18581101e8":48,"832db26f-d11c-4fc9-b223-77bc8478a648":48,"2b48dade-e29f-43f5-a606-583f6112e9b0":48,"aa5c4f07-c56a-4242-91a8-e68fc1cbadb5":36,"27f23e53-8a13-44a8-a637-07d94ca2e126":36,"d5874429-f79b-433d-b290-66717331b5e9":36,"c9b3795f-5a4f-4f9b-a8fe-aae244df5610":48,"25f0d228-a9ae-431a-8cc1-5241e0f52082":36,"096ee21b-b463-4a0e-9b73-7a8f9e88957e":36,"0651dc83-01f7-472b-ad4a-afcb8394d734":45,"8472951e-6fc2-447d-b9ff-2a413be75df3":49,"dc9cdf10-58e9-47e0-8ced-783a7e1bf07d":36,"f5d1dad4-587b-4bd1-8d33-1f52574c9591":36,"a835c85a-38be-408b-bfe7-5b8a8fec1e03":36,"d5683ca6-f02b-4a61-8453-3e04119ba480":36};
 
 // INR→EUR: 1 EUR ≈ 112.36 INR (Google Finance, Aug 2026)
 const INR_PER_EUR = 112.36;
@@ -346,7 +299,7 @@ function renderComparisonTable() {
   const allFlixD = flixWithCode.length > 0 && flixWithCode.every(bus => {
     const lc = lookupLineCode(bus.serviceId);
     const product = busProduct(bus.isSeater, bus.isSleeper);
-    return ndStatusMap[ndKey(lc, product)] === "D";
+    return ndStatusMap[ndKey(lc, product, fromCityName, toCityName)] === "D";
   });
 
   filteredData.forEach(bus => {
@@ -387,18 +340,17 @@ function renderComparisonTable() {
       ? `<span style="color:#1a6ecf;font-size:10px;margin-right:4px;" title="Volvo">●</span>${bus.travelsName}`
       : bus.travelsName;
 
-    // ND/D column: dropdown for Flix buses keyed by lineCode|product; dash for others
+    // ND/D column: dropdown for Flix buses keyed by lineCode|city1|city2|product; dash for others
     let ndCell = `<td>-</td>`;
     let currentNdValue = "";
     if (isFlix && lineCode !== "NA" && lineCode !== "-") {
       const product = busProduct(bus.isSeater, bus.isSleeper);
-      const key = ndKey(lineCode, product);
+      const key = ndKey(lineCode, product, fromCityName, toCityName);
       currentNdValue = ndStatusMap[key] || "";
-      ndCell = `<td><select class="nd-select" data-nd-key="${key}">
-        <option value="" ${currentNdValue === "" ? "selected" : ""}></option>
-        <option value="ND" ${currentNdValue === "ND" ? "selected" : ""}>ND</option>
-        <option value="D" ${currentNdValue === "D" ? "selected" : ""}>D</option>
-      </select></td>`;
+      ndCell = `<td><div class="nd-btn-group">
+        <button class="nd-btn${currentNdValue === 'D' ? ' nd-active-d' : ''}" data-nd-key="${key}" data-nd-val="D">D</button>
+        <button class="nd-btn${currentNdValue === 'ND' ? ' nd-active-nd' : ''}" data-nd-key="${key}" data-nd-val="ND">ND</button>
+      </div></td>`;
     }
 
     // Dark green row highlight for D buses — only when not all Flix are D
@@ -410,7 +362,7 @@ function renderComparisonTable() {
     let lineCodeDisplay = lineCode;
     if (isFlix && lineCode !== "NA" && lineCode !== "-") {
       const product = busProduct(bus.isSeater, bus.isSleeper);
-      const key = ndKey(lineCode, product);
+      const key = ndKey(lineCode, product, fromCityName, toCityName);
       if (!ndStatusMap[key]) {
         lineCodeDisplay = `<span style="color:#f0ad4e;font-size:10px;margin-right:3px;" title="ND/D not set">●</span>${lineCode}`;
       }
@@ -489,40 +441,77 @@ function renderOperatorTable() {
   });
 }
 
-// Persist ND/D selection and handle dblclick-to-focus via event delegation on comparison tbody
+// ND/D button interaction and floating dialog
 document.addEventListener("DOMContentLoaded", () => {
   const compTbody = document.querySelector("#comparisonTable tbody");
 
-  compTbody.addEventListener("change", e => {
-    if (!e.target.classList.contains("nd-select")) return;
-    const key = e.target.dataset.ndKey;
-    const value = e.target.value;
-    if (value) {
-      saveNdStatus(key, value);
-    } else {
+  const ndDialog = document.createElement("div");
+  ndDialog.id = "nd-dialog";
+  document.body.appendChild(ndDialog);
+
+  function closeNdDialog() {
+    ndDialog.style.display = "none";
+    ndDialog.innerHTML = "";
+  }
+
+  function applyNdVal(key, val) {
+    const current = ndStatusMap[key] || "";
+    if (current === val) {
       delete ndStatusMap[key];
       chrome.storage.local.set({ ndStatusMap });
+    } else {
+      saveNdStatus(key, val);
     }
-    // Re-render so the yellow dot appears/disappears immediately
     renderComparisonTable();
+  }
+
+  // Click on D/ND button in the table
+  compTbody.addEventListener("click", e => {
+    const btn = e.target.closest(".nd-btn");
+    if (!btn) return;
+    applyNdVal(btn.dataset.ndKey, btn.dataset.ndVal);
   });
 
-  // Dblclick anywhere on a Flix row opens/focuses the ND/D dropdown in that row
+  // Click on D/ND button inside the floating dialog
+  ndDialog.addEventListener("click", e => {
+    const btn = e.target.closest(".nd-btn");
+    if (!btn) return;
+    applyNdVal(btn.dataset.ndKey, btn.dataset.ndVal);
+    closeNdDialog();
+  });
+
+  // Close dialog when clicking anywhere outside it
+  document.addEventListener("click", e => {
+    if (ndDialog.style.display === "block" && !ndDialog.contains(e.target)) {
+      closeNdDialog();
+    }
+  });
+
+  // Dblclick on a Flix row: show floating dialog near the cursor
   compTbody.addEventListener("dblclick", e => {
     const tr = e.target.closest("tr");
     if (!tr) return;
-    const select = tr.querySelector(".nd-select");
-    if (!select) return;
-    select.focus();
-    select.size = select.options.length; // expand as a listbox
-    select.addEventListener("change", () => { select.size = 1; select.blur(); }, { once: true });
-    select.addEventListener("blur",   () => { select.size = 1; },               { once: true });
-  });
-});
+    const firstBtn = tr.querySelector(".nd-btn");
+    if (!firstBtn) return;
 
-// Load persisted ND/D map before restoring session so dropdowns render correctly
-document.addEventListener("DOMContentLoaded", () => {
-  loadNdStatusMap();
+    const key = firstBtn.dataset.ndKey;
+    const lineCode = key.split("|")[0];
+    const current = ndStatusMap[key] || "";
+
+    ndDialog.innerHTML = `
+      <div class="nd-dialog-title">${lineCode}</div>
+      <div class="nd-btn-group">
+        <button class="nd-btn${current === 'D' ? ' nd-active-d' : ''}" data-nd-key="${key}" data-nd-val="D">D</button>
+        <button class="nd-btn${current === 'ND' ? ' nd-active-nd' : ''}" data-nd-key="${key}" data-nd-val="ND">ND</button>
+      </div>
+    `;
+    const x = Math.min(e.clientX + 4, window.innerWidth - 130);
+    const y = Math.min(e.clientY + 4, window.innerHeight - 70);
+    ndDialog.style.left = `${x}px`;
+    ndDialog.style.top = `${y}px`;
+    ndDialog.style.display = "block";
+    e.stopPropagation();
+  });
 });
 
 // Add event listeners for filter dropdowns
@@ -557,45 +546,48 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
-// Restore previous session data when popup opens
+// Restore previous session data when popup opens — load ndStatusMap first so
+// dropdowns render with the correct D/ND values on the first paint.
 document.addEventListener("DOMContentLoaded", () => {
-  chrome.storage.local.get(
-    ["lastComparison", "lastOperatorSummary", "lastSearchMeta", "fromCity", "toCity", "doj", "allRows", "totalBusCount", "productTypeFilterValue"],
-    (data) => {
-      // Only restore tables if data exists
-      if (!data.lastComparison || !data.allRows) return;
+  loadNdStatusMap(() => {
+    chrome.storage.local.get(
+      ["lastComparison", "lastOperatorSummary", "lastSearchMeta", "fromCity", "toCity", "doj", "allRows", "totalBusCount", "productTypeFilterValue"],
+      (data) => {
+        // Only restore tables if data exists
+        if (!data.lastComparison || !data.allRows) return;
 
-      // Store data globally for filtering
-      allComparisonData = data.lastComparison;
-      allRowsData = data.allRows;
-      totalInventoryBusCount = data.totalBusCount || 0;
+        // Store data globally for filtering
+        allComparisonData = data.lastComparison;
+        allRowsData = data.allRows;
+        totalInventoryBusCount = data.totalBusCount || 0;
 
-      // Show table sections
-      document.getElementById("operatorSection").style.display = "flex";
-      document.getElementById("operatorTableWrapper").style.display = "block";
-      document.getElementById("comparisonSection").style.display = "flex";
-      document.getElementById("comparisonTableWrapper").style.display = "block";
+        // Show table sections
+        document.getElementById("operatorSection").style.display = "flex";
+        document.getElementById("operatorTableWrapper").style.display = "block";
+        document.getElementById("comparisonSection").style.display = "flex";
+        document.getElementById("comparisonTableWrapper").style.display = "block";
 
-      // Restore bus count
-      if (data.totalBusCount) {
-        document.getElementById("busCount").textContent = `No of buses: ${data.totalBusCount}`;
+        // Restore bus count
+        if (data.totalBusCount) {
+          document.getElementById("busCount").textContent = `No of buses: ${data.totalBusCount}`;
+        }
+
+        // Restore unified filter selection
+        if (data.productTypeFilterValue) {
+          document.getElementById("productTypeFilter").value = data.productTypeFilterValue;
+        }
+
+        // Restore form inputs BEFORE rendering tables (city names needed for line code lookup)
+        if (data.fromCity) document.getElementById("fromCity").value = data.fromCity;
+        if (data.toCity) document.getElementById("toCity").value = data.toCity;
+        if (data.doj) document.getElementById("doj").value = data.doj;
+
+        // Render both tables with restored filter values
+        renderComparisonTable();
+        renderOperatorTable();
       }
-
-      // Restore unified filter selection
-      if (data.productTypeFilterValue) {
-        document.getElementById("productTypeFilter").value = data.productTypeFilterValue;
-      }
-
-      // Restore form inputs BEFORE rendering tables (city names needed for line code lookup)
-      if (data.fromCity) document.getElementById("fromCity").value = data.fromCity;
-      if (data.toCity) document.getElementById("toCity").value = data.toCity;
-      if (data.doj) document.getElementById("doj").value = data.doj;
-
-      // Render both tables with restored filter values
-      renderComparisonTable();
-      renderOperatorTable();
-    }
-  );
+    );
+  });
 });
 
 // Get references to dropdown elements
@@ -776,15 +768,6 @@ async function fetchAndProcessData(shouldDownload = false) {
     return;
   }
 
-  // Initialize RedBus connection if not already done
-  if (!redbusConnectionStatus) {
-    const initialized = await initializeRedbusConnection();
-    if (!initialized) {
-      alert("Failed to connect to RedBus. Please try again.");
-      return;
-    }
-  }
-
   // Convert date to DD-MMM-YYYY format (Redbus API format)
   const dateObj = new Date(dojInput);
   const doj = dateObj.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
@@ -870,9 +853,9 @@ async function fetchAndProcessData(shouldDownload = false) {
       const average = (!singleFareList && wtPrice != null) ? Math.round(wtPrice) : calcAverage;
 
       // Calculate load percentage (occupancy)
-      // For Flix buses: use hardcoded seat count from master_india_lines.csv; fall back to API value for others
+      // For singleFareList buses the API totalSeats is unreliable — use sheet capacity instead
       const availableSeats = bus.availableSeats ?? 0;
-      const hardcodedSeats = lookupHardcodedSeats(bus.serviceId);
+      const hardcodedSeats = singleFareList ? lookupHardcodedSeats(bus.serviceId) : null;
       const totalSeats = hardcodedSeats !== null ? hardcodedSeats : (bus.totalSeats ?? 0);
       const loadPct = totalSeats ? ((totalSeats - availableSeats) / totalSeats * 100).toFixed(1) : "NA";
 
@@ -1171,16 +1154,21 @@ document.getElementById("exportNdBtn").addEventListener("click", () => {
       alert("No ND/D mappings saved yet.");
       return;
     }
-    const rows = [["Line Code", "From City Code", "To City Code", "Bus Product", "ND/D"]];
+    const rows = [["Line Code", "From City", "To City", "Bus Product", "ND/D"]];
     entries.forEach(([key, value]) => {
-      const [lineCode, product] = key.split("|");
-      rows.push([lineCode, "-", "-", product, value]);
+      const parts = key.split("|");
+      if (parts.length === 4) {
+        rows.push([parts[0], parts[1], parts[2], parts[3], value]);
+      } else {
+        rows.push([parts[0], "-", "-", parts[1] || "-", value]);
+      }
     });
     const csv = rows.map(r => r.map(v => `"${v}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "nd_d_mapping.csv";
+    const today = new Date().toISOString().slice(0, 10);
+    a.download = `nd_d_mapping_${today}.csv`;
     a.click();
   });
 });
